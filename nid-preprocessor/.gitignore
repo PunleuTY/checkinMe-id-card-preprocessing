@@ -34,11 +34,8 @@ ENV/
 htmlcov/
 
 # Sample Images (real NID photos should never be committed)
-sample_images/*.jpg
-sample_images/*.jpeg
-sample_images/*.png
-sample_images/*.heic
-sample_images/*.webp
+sample_images/
+sample_imgs/
 
 # Output / Temp
 output/

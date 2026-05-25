@@ -26,11 +26,12 @@ async def preprocess(payload: PreprocessRequest) -> PreprocessResponse:
     # Step 3: normalize to standard output resolution
     img = normalize_resolution(img, settings.output_width, settings.output_height)
 
-    # Step 4: apply watermark
-    img = apply_watermark(img, settings.watermark_text, settings.watermark_opacity)
-
+    # Snapshot clean card before watermark (for internal/debug use)
     segmented_b64 = ndarray_to_b64(img)
-    processed_b64 = ndarray_to_webp_b64(img, quality=settings.webp_quality)
+
+    # Step 4: apply watermark → final result sent to camDC
+    final = apply_watermark(img, settings.watermark_text, settings.watermark_opacity)
+    processed_b64 = ndarray_to_webp_b64(final, quality=settings.webp_quality)
 
     return PreprocessResponse(
         segmented_image=segmented_b64,

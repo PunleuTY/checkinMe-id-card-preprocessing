@@ -8,16 +8,17 @@ logger = logging.getLogger(__name__)
 
 # ISO/IEC 7810 ID-1 card: 85.60 × 53.98 mm → ratio ≈ 1.586
 _CARD_ASPECT_RATIO = 85.60 / 53.98
-_ASPECT_TOLERANCE = 0.42          # allow 42% deviation for angled shots
-_MIN_CARD_AREA_RATIO = 0.04       # card must occupy at least 4% of the image
-_MAX_CARD_AREA_RATIO = 0.99       # reject only exact-boundary quads
-_WORK_LONG_EDGE = 1000            # downscale long edge for stable edge detection
-_PAD_PX = 30                      # border padding added when tight-crop fallback runs
+_ASPECT_TOLERANCE = 0.42  # allow 42% deviation for angled shots
+_MIN_CARD_AREA_RATIO = 0.04  # card must occupy at least 4% of the image
+_MAX_CARD_AREA_RATIO = 0.99  # reject only exact-boundary quads
+_WORK_LONG_EDGE = 1000  # downscale long edge for stable edge detection
+_PAD_PX = 30  # border padding added when tight-crop fallback runs
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _order_corners(pts: np.ndarray) -> np.ndarray:
     """Return 4 points ordered [top-left, top-right, bottom-right, bottom-left]."""
@@ -25,9 +26,9 @@ def _order_corners(pts: np.ndarray) -> np.ndarray:
     s = pts.sum(axis=1)
     diff = np.diff(pts, axis=1).flatten()
 
-    rect[0] = pts[np.argmin(s)]     # top-left
+    rect[0] = pts[np.argmin(s)]  # top-left
     rect[1] = pts[np.argmin(diff)]  # top-right
-    rect[2] = pts[np.argmax(s)]     # bottom-right
+    rect[2] = pts[np.argmax(s)]  # bottom-right
     rect[3] = pts[np.argmax(diff)]  # bottom-left
     return rect
 
@@ -73,22 +74,34 @@ def _search_contours(
 
     retrieval: cv2.RETR_LIST (Pass 1, finds all contours) or
                cv2.RETR_EXTERNAL (Pass 2/padded, finds only outer contours).
+
+    Three preprocessing strategies are tried in order:
+      1. Gaussian blur + adaptive Canny  — works for high-contrast scenes
+      2. CLAHE + adaptive Canny          — works for low-contrast/uneven lighting
+      3. Bilateral filter + fixed Canny  — works for textured backgrounds (card on surface)
     """
     gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
 
-    # Try plain Gaussian blur first, then CLAHE if nothing found.
-    for preprocess in ("blur", "clahe"):
-        if preprocess == "blur":
-            processed = cv2.GaussianBlur(gray, (5, 5), 0)
-        else:
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            processed = clahe.apply(gray)
-            processed = cv2.GaussianBlur(processed, (5, 5), 0)
+    strategies = [
+        # (processed_image, canny_lower, canny_upper, close_kernel_size)
+        (cv2.GaussianBlur(gray, (5, 5), 0), None, None, 5),
+        (
+            cv2.GaussianBlur(
+                cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray),
+                (5, 5),
+                0,
+            ),
+            None,
+            None,
+            5,
+        ),
+        (cv2.bilateralFilter(gray, 9, 75, 75), 30, 100, 11),
+    ]
 
-        edges = _auto_canny(processed)
+    for processed, lo, hi, kern_size in strategies:
+        edges = _auto_canny(processed) if lo is None else cv2.Canny(processed, lo, hi)
 
-        # Close gaps so the card outline forms a single closed contour.
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kern_size, kern_size))
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
 
         contours, _ = cv2.findContours(edges, retrieval, cv2.CHAIN_APPROX_SIMPLE)
@@ -112,6 +125,7 @@ def _search_contours(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def find_card_corners(img: np.ndarray) -> Optional[np.ndarray]:
     """
     Locate the four corners of an ID card in *img*.
@@ -128,8 +142,11 @@ def find_card_corners(img: np.ndarray) -> Optional[np.ndarray]:
 
     long_edge = max(h, w)
     scale = _WORK_LONG_EDGE / float(long_edge) if long_edge > _WORK_LONG_EDGE else 1.0
-    small = (cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-             if scale != 1.0 else img)
+    small = (
+        cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+        if scale != 1.0
+        else img
+    )
     sh, sw = small.shape[:2]
     small_area = float(sh * sw)
 
@@ -163,7 +180,9 @@ def perspective_correct(img: np.ndarray) -> np.ndarray:
     corners = find_card_corners(img)
 
     if corners is None:
-        logger.warning("perspective_correct: card not detected — returning original image")
+        logger.warning(
+            "perspective_correct: card not detected — returning original image"
+        )
         return img
 
     tl, tr, br, bl = corners
@@ -172,7 +191,9 @@ def perspective_correct(img: np.ndarray) -> np.ndarray:
     out_w = int(round((np.linalg.norm(tr - tl) + np.linalg.norm(br - bl)) / 2))
     out_h = int(round((np.linalg.norm(bl - tl) + np.linalg.norm(br - tr)) / 2))
     if out_w < 1 or out_h < 1:
-        logger.warning("perspective_correct: degenerate quad — returning original image")
+        logger.warning(
+            "perspective_correct: degenerate quad — returning original image"
+        )
         return img
 
     dst = np.array(
@@ -187,5 +208,25 @@ def perspective_correct(img: np.ndarray) -> np.ndarray:
     if warped.shape[0] > warped.shape[1]:
         warped = cv2.rotate(warped, cv2.ROTATE_90_CLOCKWISE)
 
-    logger.info("perspective_correct: card detected — output %dx%d", warped.shape[1], warped.shape[0])
+    logger.info(
+        "perspective_correct: card detected — output %dx%d",
+        warped.shape[1],
+        warped.shape[0],
+    )
     return warped
+
+
+"""
+command to test the perspective transformation in isolation (requires curl, base64, python3):
+
+BASE64=$(base64 -i /path/to/your/image.jpg) && \
+  curl -s -X POST http://127.0.0.1:8000/preprocess \
+    -H "Content-Type: application/json" \
+    -d "{\"image\": \"$BASE64\"}" \
+    | python3 -c "
+  import sys, json, base64
+  r = json.load(sys.stdin)
+  open('/tmp/result.jpg','wb').write(base64.b64decode(r['segmented_image']))
+  " && open /tmp/result.jpg && open /path/to/your/image.jpg
+  
+  """

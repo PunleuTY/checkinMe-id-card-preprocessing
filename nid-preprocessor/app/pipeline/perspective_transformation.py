@@ -8,10 +8,11 @@ logger = logging.getLogger(__name__)
 
 # ISO/IEC 7810 ID-1 card: 85.60 × 53.98 mm → ratio ≈ 1.586
 _CARD_ASPECT_RATIO = 85.60 / 53.98
-_ASPECT_TOLERANCE = 0.40          # allow 40% deviation for angled shots
-_MIN_CARD_AREA_RATIO = 0.05       # card must occupy at least 5% of the image
-_MAX_CARD_AREA_RATIO = 0.98       # reject quads that are just the image border
+_ASPECT_TOLERANCE = 0.42          # allow 42% deviation for angled shots
+_MIN_CARD_AREA_RATIO = 0.04       # card must occupy at least 4% of the image
+_MAX_CARD_AREA_RATIO = 0.99       # reject only exact-boundary quads
 _WORK_LONG_EDGE = 1000            # downscale long edge for stable edge detection
+_PAD_PX = 30                      # border padding added when tight-crop fallback runs
 
 
 # ---------------------------------------------------------------------------
@@ -19,14 +20,7 @@ _WORK_LONG_EDGE = 1000            # downscale long edge for stable edge detectio
 # ---------------------------------------------------------------------------
 
 def _order_corners(pts: np.ndarray) -> np.ndarray:
-    """
-    Return 4 points ordered [top-left, top-right, bottom-right, bottom-left].
-
-    top-left     → smallest x+y
-    bottom-right → largest  x+y
-    top-right    → smallest y-x
-    bottom-left  → largest  y-x
-    """
+    """Return 4 points ordered [top-left, top-right, bottom-right, bottom-left]."""
     rect = np.zeros((4, 2), dtype=np.float32)
     s = pts.sum(axis=1)
     diff = np.diff(pts, axis=1).flatten()
@@ -68,6 +62,52 @@ def _is_valid_card_quad(corners: np.ndarray, img_area: float) -> bool:
     return landscape_ok or portrait_ok
 
 
+def _search_contours(
+    small: np.ndarray,
+    small_area: float,
+    retrieval: int = cv2.RETR_LIST,
+) -> Optional[np.ndarray]:
+    """
+    Run the full edge→contour→quad pipeline on a pre-scaled image.
+    Returns ordered corners in *small*-coordinate space, or None.
+
+    retrieval: cv2.RETR_LIST (Pass 1, finds all contours) or
+               cv2.RETR_EXTERNAL (Pass 2/padded, finds only outer contours).
+    """
+    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+    # Try plain Gaussian blur first, then CLAHE if nothing found.
+    for preprocess in ("blur", "clahe"):
+        if preprocess == "blur":
+            processed = cv2.GaussianBlur(gray, (5, 5), 0)
+        else:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            processed = clahe.apply(gray)
+            processed = cv2.GaussianBlur(processed, (5, 5), 0)
+
+        edges = _auto_canny(processed)
+
+        # Close gaps so the card outline forms a single closed contour.
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+        contours, _ = cv2.findContours(edges, retrieval, cv2.CHAIN_APPROX_SIMPLE)
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+
+        for contour in contours[:15]:
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter == 0:
+                continue
+            for eps in (0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.10, 0.12):
+                approx = cv2.approxPolyDP(contour, eps * perimeter, True)
+                if len(approx) == 4 and cv2.isContourConvex(approx):
+                    corners = _order_corners(approx.reshape(4, 2).astype(np.float32))
+                    if _is_valid_card_quad(corners, small_area):
+                        return corners
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -76,44 +116,40 @@ def find_card_corners(img: np.ndarray) -> Optional[np.ndarray]:
     """
     Locate the four corners of an ID card in *img*.
 
-    Works on a downscaled copy for stable edge detection, then scales the
-    detected corners back to the original resolution.
+    Strategy:
+      1. Downscale to _WORK_LONG_EDGE for stable detection, search contours.
+      2. If not found (tight-crop / no background), pad with a black border and retry —
+         the border creates a clear card-background edge for the detector.
 
-    Returns ordered corners [TL, TR, BR, BL] as float32 (4×2) in the
-    coordinate space of the original image, or None when no card is found.
+    Returns ordered corners [TL, TR, BR, BL] as float32 (4×2) in the coordinate
+    space of the original image, or None when no card is found.
     """
     h, w = img.shape[:2]
 
-    # Downscale so detection behaves the same regardless of input resolution.
     long_edge = max(h, w)
     scale = _WORK_LONG_EDGE / float(long_edge) if long_edge > _WORK_LONG_EDGE else 1.0
-    small = cv2.resize(img, None, fx=scale, fy=scale,
-                       interpolation=cv2.INTER_AREA) if scale != 1.0 else img
+    small = (cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+             if scale != 1.0 else img)
     sh, sw = small.shape[:2]
     small_area = float(sh * sw)
 
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = _auto_canny(blur)
+    # --- Pass 1: normal detection (all contours, card against a visible background) ---
+    corners = _search_contours(small, small_area, cv2.RETR_LIST)
+    if corners is not None:
+        return corners / scale
 
-    # Close gaps so the card outline forms a single closed contour.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
+    # --- Pass 2: pad with a black border so tight-crop cards get a detectable edge.
+    #     Use RETR_EXTERNAL — the card boundary is now the dominant outer contour. ---
+    p = _PAD_PX
+    padded = cv2.copyMakeBorder(small, p, p, p, p, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    ph, pw = padded.shape[:2]
+    padded_area = float(ph * pw)
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)
-
-    for contour in contours[:10]:
-        perimeter = cv2.arcLength(contour, True)
-        if perimeter == 0:
-            continue
-        # Try a range of approximation tolerances to land on a clean quad.
-        for eps in (0.02, 0.03, 0.04, 0.05, 0.06, 0.08):
-            approx = cv2.approxPolyDP(contour, eps * perimeter, True)
-            if len(approx) == 4 and cv2.isContourConvex(approx):
-                corners = _order_corners(approx.reshape(4, 2).astype(np.float32))
-                if _is_valid_card_quad(corners, small_area):
-                    return corners / scale  # back to original-image coordinates
+    corners = _search_contours(padded, padded_area, cv2.RETR_EXTERNAL)
+    if corners is not None:
+        # Subtract padding offset, then map back to original-image coordinates.
+        corners -= _PAD_PX
+        return corners / scale
 
     return None
 
@@ -122,8 +158,7 @@ def perspective_correct(img: np.ndarray) -> np.ndarray:
     """
     Detect the ID card in *img* and return a flat, de-skewed crop.
 
-    Falls back to returning *img* unchanged if no card is detected, so the
-    pipeline continues with a degraded but non-crashing result.
+    Falls back to returning *img* unchanged if no card is detected.
     """
     corners = find_card_corners(img)
 

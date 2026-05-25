@@ -1,64 +1,53 @@
 # Python
-  __pycache__/
-  *.py[cod]
-  *.pyo
-  *.pyd
-  .Python
-  *.egg
-  *.egg-info/
-  dist/
-  build/
-  eggs/
-  parts/
-  var/
-  sdist/
-  wheels/
-  pip-wheel-metadata/
-  *.manifest
-  *.spec
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
 
-  # Virtual Environment
-  .env
-  .venv
-  env/
-  venv/
-  ENV/
-  env.bak/
-  venv.bak/
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
 
-  # Environment Variables
-  .env
-  .env.local
-  .env.production
+# Environment Variables
+.env
+.env.local
+.env.production
 
-  # IDE
-  .vscode/
-  .idea/
-  *.swp
-  *.swo
-  .DS_Store
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
 
-  # Testing
-  .pytest_cache/
-  .coverage
-  htmlcov/
-  .tox/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
-  # Sample Images (real NID photos should never be committed)
-  sample_images/*.jpg
-  sample_images/*.jpeg
-  sample_images/*.png
-  sample_images/*.heic
-  sample_images/*.webp
+# Sample Images (real NID photos should never be committed)
+sample_images/*.jpg
+sample_images/*.jpeg
+sample_images/*.png
+sample_images/*.heic
+sample_images/*.webp
 
-  # Output / Temp processed images
-  output/
-  tmp/
-  temp/
+# Output / Temp
+output/
+tmp/
+temp/
 
-  # Logs
-  *.log
-  logs/
+# Logs
+*.log
+logs/
 
-  # OS
-  Thumbs.db
+# OS
+Thumbs.db

@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.pipeline.perspective_transformation import perspective_correct
 from app.pipeline.img_segment import segment_card
 from app.pipeline.normalize import normalize_resolution
+from app.pipeline.watermark import apply_watermark
 
 router = APIRouter()
 
@@ -25,9 +26,8 @@ async def preprocess(payload: PreprocessRequest) -> PreprocessResponse:
     # Step 3: normalize to standard output resolution
     img = normalize_resolution(img, settings.output_width, settings.output_height)
 
-    # --- pipeline steps (filled in one by one) ---
-    # Step 4: apply_watermark(img)
-    # Step 5: compress to WebP
+    # Step 4: apply watermark
+    img = apply_watermark(img, settings.watermark_text, settings.watermark_opacity)
 
     segmented_b64 = ndarray_to_b64(img)
     processed_b64 = ndarray_to_webp_b64(img, quality=settings.webp_quality)

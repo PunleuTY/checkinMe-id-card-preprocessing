@@ -3,6 +3,15 @@ import numpy as np
 import cv2
 
 
+def bytes_to_ndarray(data: bytes) -> np.ndarray:
+    """Decode raw image bytes to a BGR numpy array."""
+    buf = np.frombuffer(data, dtype=np.uint8)
+    img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("Could not decode image from uploaded file.")
+    return img
+
+
 def b64_to_ndarray(b64: str) -> np.ndarray:
     """Decode a base64 string to a BGR numpy array."""
     raw = base64.b64decode(b64)

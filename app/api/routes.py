@@ -13,6 +13,7 @@ from app.schemas.preprocess import (
     GeminiOCRRequest,
     GeminiOCRResponse,
     GeminiOCRAnnotatedResponse,
+    GeminiOCRProcessedResponse,
 )
 from app.utils.image import (
     b64_to_bytes,
@@ -209,6 +210,55 @@ async def gemini_ocr_upload_annotated(
     )
 
 
+@router.post("/gemini-ocr/upload/processed", response_model=GeminiOCRProcessedResponse)
+async def gemini_ocr_upload_processed(
+    file: UploadFile = File(...),
+    model: str = Form(settings.gemini_model),
+) -> GeminiOCRProcessedResponse:
+    """
+    Full Gemini service: Stage 1 preprocess (detect card, de-skew, remove background)
+    then Stage 2 annotate + extract on the cleaned image.
+
+    Returns the cleaned image (store this — no boxes) plus the annotated preview,
+    fields, regions and timing. This is two Gemini calls.
+    """
+    from experiments.gemini.extractor import process_card_from_bytes
+
+    t0 = time.perf_counter()
+    data = await file.read()
+    t1 = time.perf_counter()
+
+    try:
+        result = await run_in_threadpool(
+            process_card_from_bytes, data, file.content_type, model or None
+        )
+    except ImportError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.exception("gemini full processing failed")
+        raise HTTPException(status_code=502, detail=f"Gemini error: {e}")
+
+    t2 = time.perf_counter()
+
+    def _ms(a, b): return round((b - a) * 1000, 2)
+
+    return GeminiOCRProcessedResponse(
+        text=result["text"],
+        fields=result["fields"],
+        regions=result["regions"],
+        annotated_image=result["annotated_image"],
+        cleaned_image=result["cleaned_image"],
+        model=result["model"],
+        timing=TimingInfo(
+            total_ms=_ms(t0, t2),
+            details={
+                "upload_read_ms": _ms(t0, t1),
+                "gemini_pipeline_ms": _ms(t1, t2),
+            },
+        ),
+    )
+
+
 @router.get("/gemini-ocr/preview", response_class=HTMLResponse)
 async def gemini_ocr_preview():
     """Visual testing page — upload a card image and see annotated regions + fields inline."""
@@ -238,6 +288,13 @@ async def gemini_ocr_preview():
 
   .img-panel { flex: 1; min-width: 300px; }
   .img-panel img { width: 100%; border-radius: 8px; border: 1px solid #333; }
+  .img-stack { display: flex; flex-direction: column; gap: 16px; flex: 1.4; min-width: 320px; }
+  .img-card-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; display: flex;
+    align-items: center; gap: 8px; }
+  .badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: .04em; }
+  .badge-store { background: #1c4; color: #042; }
+  .badge-preview { background: #555; color: #ddd; }
 
   .fields-panel { flex: 1; min-width: 300px; }
   .timing { font-size: 11px; color: #888; margin-bottom: 12px; }
@@ -278,8 +335,15 @@ async def gemini_ocr_preview():
 
 <div id="error" class="error" style="display:none"></div>
 <div class="result" id="result">
-  <div class="img-panel">
-    <img id="annotatedImg" src="" alt="Annotated image">
+  <div class="img-stack">
+    <div>
+      <div class="img-card-title">Cleaned image <span class="badge badge-store">stored in DB</span></div>
+      <div class="img-panel"><img id="cleanedImg" src="" alt="Cleaned image"></div>
+    </div>
+    <div>
+      <div class="img-card-title">Annotated <span class="badge badge-preview">preview only</span></div>
+      <div class="img-panel"><img id="annotatedImg" src="" alt="Annotated image"></div>
+    </div>
   </div>
   <div class="fields-panel">
     <div class="timing" id="timingInfo"></div>
@@ -310,18 +374,19 @@ async function run() {
   form.append('model', model);
 
   try {
-    const resp = await fetch('/gemini-ocr/upload/annotated', { method: 'POST', body: form });
+    const resp = await fetch('/gemini-ocr/upload/processed', { method: 'POST', body: form });
     if (!resp.ok) {
       const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(detail.detail || resp.statusText);
     }
     const data = await resp.json();
 
+    document.getElementById('cleanedImg').src = 'data:image/jpeg;base64,' + data.cleaned_image;
     document.getElementById('annotatedImg').src = 'data:image/jpeg;base64,' + data.annotated_image;
 
     const t = data.timing;
     document.getElementById('timingInfo').textContent =
-      t ? `total ${t.total_ms} ms  |  gemini ${t.details.gemini_api_ms} ms  |  model: ${data.model}` : `model: ${data.model}`;
+      t ? `total ${t.total_ms} ms  |  gemini pipeline ${t.details.gemini_pipeline_ms} ms  |  model: ${data.model}` : `model: ${data.model}`;
 
     const tbody = document.getElementById('fieldsBody');
     tbody.innerHTML = '';

@@ -34,6 +34,10 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
   - Address in Khmer (អាស័យដ្ឋានបច្ចុប្បន្ន )
   - Issue date in DD/MM/YYYY (កាលបរិច្ឆេទចេញ)
   - Expiry date in DD/MM/YYYY (កាលបរិច្ឆេទផុតកំណត់)
+  - Distinguishing physical features (ចំណាំពិសេស): a list of short Khmer phrases
+    describing unique physical marks on the owner's face or body that appear in
+    the section just above the MRZ, e.g. "ប្រជ្រុយនៅក្រោមច្រមុះ ០ឦ៦ ស.ម" (mole under the nose).
+    Preserve the exact Khmer text; return as an array of strings.
   - Three MRZ lines at the bottom (machine-readable zone):
       MRZ1: starts with IDKHM followed by the 9-digit ID number and < padding
       MRZ2: 6-digit DOB + check digit + sex (M/F) + 6-digit expiry + check + KHM + padding + composite check
@@ -55,6 +59,7 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
       "issuedDate": null,
       "address": null,
       "pob": null,
+      "distinguishingFeatures": [],
       "MRZ1": null,
       "MRZ2": null,
       "MRZ3": null
@@ -67,6 +72,8 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
   - gender must be exactly "M" or "F", nothing else.
   - English name fields (lastNameEn, firstNameEn) must be UPPERCASE.
   - Preserve all Khmer Unicode characters verbatim — do not transliterate.
+  - distinguishingFeatures must be an array of strings (empty array [] if none found).
+    Each element is one physical mark phrase exactly as printed in Khmer.
   - For MRZ lines: copy every character exactly including all < characters, digits, and letters.
     Valid MRZ characters are only: A-Z, 0-9, and <
 """

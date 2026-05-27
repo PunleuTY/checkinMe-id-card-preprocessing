@@ -53,3 +53,4 @@ class GeminiOCRAnnotatedResponse(GeminiOCRResponse):
 
 class GeminiOCRProcessedResponse(GeminiOCRAnnotatedResponse):
     cleaned_image: str               # base64 JPEG — de-skewed, background removed, NO boxes (store this)
+    saved_as: str | None = None      # relative path where the cleaned image was saved locally

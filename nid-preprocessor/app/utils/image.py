@@ -3,6 +3,14 @@ import numpy as np
 import cv2
 
 
+def b64_to_bytes(b64: str) -> bytes:
+    """Decode a base64 string to raw image bytes."""
+    try:
+        return base64.b64decode(b64)
+    except Exception as e:
+        raise ValueError(f"Could not decode base64 data: {e}")
+
+
 def bytes_to_ndarray(data: bytes) -> np.ndarray:
     """Decode raw image bytes to a BGR numpy array."""
     buf = np.frombuffer(data, dtype=np.uint8)

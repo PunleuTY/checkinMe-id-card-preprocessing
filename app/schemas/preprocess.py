@@ -60,6 +60,7 @@ class QualityCheck(BaseModel):
 
 
 class GeminiOCRProcessedResponse(GeminiOCRAnnotatedResponse):
-    cleaned_image: str               # base64 JPEG — de-skewed, background removed, NO boxes (store this)
-    quality_check: QualityCheck      # validation result — only saved when valid is True
-    saved_as: str | None = None      # relative path written to disk; null if quality check failed
+    cleaned_image: str               # base64 JPEG — de-skewed, background removed, NO boxes
+    quality_check: QualityCheck
+    saved_as: str                    # relative path written to disk (always set)
+    saved_type: Literal["cleaned", "original"]  # "cleaned" if quality passed, "original" as fallback

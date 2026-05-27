@@ -1,3 +1,5 @@
+from typing import Any, Literal
+
 from pydantic import BaseModel, field_validator
 
 
@@ -15,3 +17,22 @@ class PreprocessRequest(BaseModel):
 class PreprocessResponse(BaseModel):
     segmented_image: str  # base64 — for CamDX OCR
     processed_image: str  # base64 — for storage (normalised + WebP + watermark)
+
+
+class PreprocessOCRRequest(PreprocessRequest):
+    decode_method: Literal["fast", "accurate", "beam"] = "accurate"
+
+
+class PreprocessOCRResponse(PreprocessResponse):
+    text: str
+    lines: list[dict[str, Any]]
+
+
+class GeminiOCRRequest(PreprocessRequest):
+    model: str | None = None  # override settings.gemini_model
+
+
+class GeminiOCRResponse(BaseModel):
+    text: str
+    fields: dict[str, Any]
+    model: str

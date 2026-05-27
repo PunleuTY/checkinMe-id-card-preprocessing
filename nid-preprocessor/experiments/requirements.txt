@@ -1,0 +1,2 @@
+kiri-ocr
+google-genai

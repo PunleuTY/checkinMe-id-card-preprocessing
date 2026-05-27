@@ -58,18 +58,38 @@ def _preprocess_image(image_b64: str):
 
 @router.post("/preprocess/upload", response_model=PreprocessResponse)
 async def preprocess_upload(file: UploadFile = File(...)) -> PreprocessResponse:
+    t0 = time.perf_counter()
+
     try:
         img = bytes_to_ndarray(await file.read())
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    t1 = time.perf_counter()
     img = perspective_correct(img)
+    t2 = time.perf_counter()
     img = segment_card(img)
+    t3 = time.perf_counter()
     img = normalize_resolution(img, settings.output_width, settings.output_height)
+    t4 = time.perf_counter()
     processed_b64 = ndarray_to_webp_b64(img, quality=settings.webp_quality)
+    t5 = time.perf_counter()
+
+    def _ms(a, b): return round((b - a) * 1000, 2)
+
     return PreprocessResponse(
         segmented_image=ndarray_to_b64(img),
         processed_image=processed_b64,
+        timing=TimingInfo(
+            total_ms=_ms(t0, t5),
+            details={
+                "decode_image_ms": _ms(t0, t1),
+                "perspective_correct_ms": _ms(t1, t2),
+                "segment_card_ms": _ms(t2, t3),
+                "normalize_ms": _ms(t3, t4),
+                "encode_webp_ms": _ms(t4, t5),
+            },
+        ),
     )
 
 

@@ -26,14 +26,14 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
 
   Cambodian NID cards contain:
   - A 9-digit ID number (top area of the card)
-  - Last name and first name in Khmer script (ឈ្មោះ ជាអក្ស រខ្មែ រ)
+  - Last name and first name in Khmer script (ឈ្មោះជាអក្សរខ្មែរ)
   - Last name and first name in English/Latin (UPPERCASE)
-  - Date of birth in DD/MM/YYYY format (កន្លែ ងកំណើត)
+  - Date of birth in DD/MM/YYYY format (កន្លែងកំណើត)
   - Gender: M for male, F for female
-  - Place of birth in Khmer (ទីក ន្លែ ងកំណើត / POB)
-  - Address in Khmer (អាស័យ ដ្ឋា នបច្ចុ  ប្ប ន្ន )
-  - Issue date in DD/MM/YYYY (កាលបរិ ច្ឆេ ទចេញ)
-  - Expiry date in DD/MM/YYYY (កាលបរិ ច្ឆេ ទផុតកំណត់)
+  - Place of birth in Khmer (ទីកន្លែងកំណើត / POB)
+  - Address in Khmer (អាស័យដ្ឋានបច្ចុប្បន្ន )
+  - Issue date in DD/MM/YYYY (កាលបរិច្ឆេទចេញ)
+  - Expiry date in DD/MM/YYYY (កាលបរិច្ឆេទផុតកំណត់)
   - Three MRZ lines at the bottom (machine-readable zone):
       MRZ1: starts with IDKHM followed by the 9-digit ID number and < padding
       MRZ2: 6-digit DOB + check digit + sex (M/F) + 6-digit expiry + check + KHM + padding + composite check

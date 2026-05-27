@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # WebP quality (0-100)
     webp_quality: int = 85
 
+    # Gemini (experiments)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+
     class Config:
         env_file = ".env"
 

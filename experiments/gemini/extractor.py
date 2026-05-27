@@ -318,6 +318,198 @@ def extract_with_regions_from_bytes(
     }
 
 
+# ---------------------------------------------------------------------------
+# Stage 1 — Gemini-driven preprocessing (detect card, de-skew, drop background)
+# ---------------------------------------------------------------------------
+
+PROMPT_DETECT_CARD = """You are a document-localization system.
+
+The image is a phone photo or scan of a single Cambodian National ID card,
+possibly rotated, skewed, or surrounded by background clutter (table, hand, etc.).
+
+Locate the four physical corners of the ID card itself (the rectangular card edge,
+NOT the text inside it).
+
+Return ONLY valid JSON, no markdown fences, with exactly this shape:
+
+{
+  "corners": [[y, x], [y, x], [y, x], [y, x]]
+}
+
+Rules:
+- Provide exactly four [y, x] points, ordered: top-left, top-right, bottom-right, bottom-left
+  (relative to the card's own orientation as it appears in the image).
+- Each coordinate is on a 0–1000 scale, where [0,0] is the top-left of the IMAGE
+  and [1000,1000] is the bottom-right of the IMAGE.
+- Track the card's true corners even if it is rotated or tilted.
+- If no ID card is visible, return {"corners": null}.
+"""
+
+
+def _find_perspective_coeffs(dst_pts: list, src_pts: list) -> list:
+    """
+    Solve the 8 perspective coefficients that PIL's Image.transform(PERSPECTIVE)
+    needs to map each OUTPUT pixel (dst_pts) back to the INPUT image (src_pts).
+    """
+    import numpy as np
+
+    matrix = []
+    for (dx, dy), (sx, sy) in zip(dst_pts, src_pts):
+        matrix.append([dx, dy, 1, 0, 0, 0, -sx * dx, -sx * dy])
+        matrix.append([0, 0, 0, dx, dy, 1, -sy * dx, -sy * dy])
+    A = np.array(matrix, dtype=float)
+    B = np.array(src_pts, dtype=float).reshape(8)
+    res = np.linalg.solve(A, B)
+    return res.tolist()
+
+
+def _detect_card_corners(
+    image_bytes: bytes,
+    mime_type: str | None,
+    model: str | None,
+    api_key: str | None,
+) -> list | None:
+    """
+    Ask Gemini for the card's four corners, returned as pixel (x, y) points
+    ordered TL, TR, BR, BL. Returns None if no card is detected.
+    """
+    from google.genai import types
+
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ImportError("Pillow is not installed. Run: pip install Pillow")
+
+    import io
+
+    client = _build_client(api_key)
+    model_name = model if (model and model != "string") else settings.gemini_model
+    mime = (
+        mime_type
+        if (mime_type and mime_type.startswith("image/"))
+        else _sniff_mime(image_bytes)
+    )
+
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime),
+            PROMPT_DETECT_CARD,
+        ],
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            temperature=0,
+        ),
+    )
+
+    try:
+        data = _parse_json(resp.text or "")
+        corners = data.get("corners")
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning("detect_card: response was not valid JSON")
+        return None
+
+    if not corners or not isinstance(corners, list) or len(corners) != 4:
+        logger.warning("detect_card: no usable corners returned")
+        return None
+
+    img_w, img_h = Image.open(io.BytesIO(image_bytes)).size
+    pts = []
+    for point in corners:
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            logger.warning("detect_card: malformed corner %r", point)
+            return None
+        y, x = point  # Gemini returns [y, x] on a 0–1000 scale
+        pts.append((x / 1000 * img_w, y / 1000 * img_h))
+    return pts
+
+
+def preprocess_card_from_bytes(
+    image_bytes: bytes,
+    mime_type: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> bytes:
+    """
+    Stage 1: detect the ID card via Gemini, then de-skew + crop it out of the
+    background with a perspective warp. Returns cleaned JPEG bytes.
+
+    Falls back to the original image bytes if the card cannot be located or the
+    warp fails — never raises on a detection miss.
+    """
+    import io
+    import math
+
+    try:
+        from PIL import Image
+    except ImportError:
+        raise ImportError("Pillow is not installed. Run: pip install Pillow")
+
+    corners = _detect_card_corners(image_bytes, mime_type, model, api_key)
+    if corners is None:
+        logger.warning("preprocess: card not detected — returning original image")
+        return image_bytes
+
+    tl, tr, br, bl = corners
+
+    def _dist(a, b):
+        return math.hypot(a[0] - b[0], a[1] - b[1])
+
+    out_w = int(round((_dist(tr, tl) + _dist(br, bl)) / 2))
+    out_h = int(round((_dist(bl, tl) + _dist(br, tr)) / 2))
+    if out_w < 10 or out_h < 10:
+        logger.warning("preprocess: degenerate card quad — returning original image")
+        return image_bytes
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Output rectangle corners (TL, TR, BR, BL) map back to detected src corners.
+        dst_pts = [(0, 0), (out_w, 0), (out_w, out_h), (0, out_h)]
+        src_pts = [tl, tr, br, bl]
+        coeffs = _find_perspective_coeffs(dst_pts, src_pts)
+        warped = img.transform((out_w, out_h), Image.PERSPECTIVE, coeffs, Image.BICUBIC)
+
+        # Keep landscape orientation (cards are wider than tall).
+        if warped.height > warped.width:
+            warped = warped.rotate(-90, expand=True)
+
+        buf = io.BytesIO()
+        warped.save(buf, format="JPEG", quality=92)
+        logger.info("preprocess: cleaned card → %dx%d", warped.width, warped.height)
+        return buf.getvalue()
+    except Exception:
+        logger.warning("preprocess: warp failed — returning original image")
+        return image_bytes
+
+
+def process_card_from_bytes(
+    image_bytes: bytes,
+    mime_type: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+) -> dict:
+    """
+    Full Gemini service: preprocess (Stage 1) then annotate + extract (Stage 2).
+
+    Returns:
+      "cleaned_image"   — base64 JPEG, de-skewed + background-removed, NO boxes
+                          (this is the image to persist in production)
+      "annotated_image" — base64 JPEG of the cleaned image WITH detected boxes
+                          (preview/debug only — do not store)
+      plus "text", "fields", "regions", "model".
+    """
+    import base64
+
+    cleaned_bytes = preprocess_card_from_bytes(image_bytes, mime_type, model, api_key)
+
+    # Stage 2 runs entirely on the cleaned image, so regions/boxes align with it.
+    result = extract_with_regions_from_bytes(
+        cleaned_bytes, "image/jpeg", model=model, api_key=api_key
+    )
+    result["cleaned_image"] = base64.b64encode(cleaned_bytes).decode("utf-8")
+    return result
+
+
 """PROMPT_V1
 You are an OCR and information-extraction system for national ID cards
 (Cambodian NID — text is in Khmer and Latin/English).

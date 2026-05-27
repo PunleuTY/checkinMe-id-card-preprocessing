@@ -15,7 +15,61 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-PROMPT = """You are an OCR and information-extraction system for national ID cards
+PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NID).
+  The card contains text in both Khmer script and Latin/English characters.
+
+  The image may be a phone photo or scan that is rotated, skewed, low-resolution,
+  or affected by glare, shadows, or background clutter. Read the card regardless.
+
+  Cambodian NID cards contain:
+  - A 9-digit ID number (top area of the card)
+  - Last name and first name in Khmer script (ឈ្មោះ ជាអក្ស រខ្មែ រ)
+  - Last name and first name in English/Latin (UPPERCASE)
+  - Date of birth in DD/MM/YYYY format (កន្លែ ងកំណើត)
+  - Gender: M for male, F for female
+  - Place of birth in Khmer (ទីក ន្លែ ងកំណើត / POB)
+  - Address in Khmer (អាស័យ ដ្ឋា នបច្ចុ  ប្ប ន្ន )
+  - Issue date in DD/MM/YYYY (កាលបរិ ច្ឆេ ទចេញ)
+  - Expiry date in DD/MM/YYYY (កាលបរិ ច្ឆេ ទផុតកំណត់)
+  - Three MRZ lines at the bottom (machine-readable zone):
+      MRZ1: starts with IDKHM followed by the 9-digit ID number and < padding
+      MRZ2: 6-digit DOB + check digit + sex (M/F) + 6-digit expiry + check + KHM + padding + composite check
+      MRZ3: SURNAME<<GIVENNAME<<< padding (all uppercase, spaces replaced by <)
+
+  Return ONLY valid JSON with exactly this shape (no markdown fences, no extra keys):
+
+  {
+    "text": "<full raw transcription of every visible character on the card>",
+    "fields": {
+      "idNumber": null,
+      "lastNameKh": null,
+      "firstNameKh": null,
+      "dob": null,
+      "gender": null,
+      "lastNameEn": null,
+      "firstNameEn": null,
+      "expiredDate": null,
+      "issuedDate": null,
+      "address": null,
+      "pob": null,
+      "MRZ1": null,
+      "MRZ2": null,
+      "MRZ3": null
+    }
+  }
+
+  Rules:
+  - Use null for any field you cannot read with confidence. Never guess or invent values.
+  - Dates must be DD/MM/YYYY exactly as printed on the card.
+  - gender must be exactly "M" or "F", nothing else.
+  - English name fields (lastNameEn, firstNameEn) must be UPPERCASE.
+  - Preserve all Khmer Unicode characters verbatim — do not transliterate.
+  - For MRZ lines: copy every character exactly including all < characters, digits, and letters.
+    Valid MRZ characters are only: A-Z, 0-9, and <
+"""
+
+"""PROMPT_V1
+You are an OCR and information-extraction system for national ID cards
 (Cambodian NID — text is in Khmer and Latin/English).
 
 The image is a phone photo or scan and may be rotated, skewed, low-resolution, or

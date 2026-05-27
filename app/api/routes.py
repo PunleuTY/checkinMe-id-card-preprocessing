@@ -1,5 +1,7 @@
 import logging
 import time
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -32,6 +34,23 @@ from app.pipeline.normalize import normalize_resolution
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_OUTPUTS_DIR = Path(__file__).resolve().parents[2] / "sample_imgs" / "outputs"
+
+
+def _save_cleaned_image(image_bytes: bytes, original_filename: str) -> str:
+    """
+    Save cleaned image bytes to sample_imgs/outputs/.
+    Returns the relative path string, e.g. 'sample_imgs/outputs/id1_20260527_143201.jpg'.
+    """
+    _OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    stem = Path(original_filename).stem if original_filename else "card"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{stem}_{timestamp}.jpg"
+    dest = _OUTPUTS_DIR / filename
+    dest.write_bytes(image_bytes)
+    logger.info("saved cleaned image → %s", dest)
+    return f"sample_imgs/outputs/{filename}"
 
 
 def _run_pipeline(img):
@@ -243,6 +262,10 @@ async def gemini_ocr_upload_processed(
 
     t2 = time.perf_counter()
 
+    import base64
+    cleaned_bytes = base64.b64decode(result["cleaned_image"])
+    saved_as = _save_cleaned_image(cleaned_bytes, file.filename or "card.jpg")
+
     def _ms(a, b):
         return round((b - a) * 1000, 2)
 
@@ -252,6 +275,7 @@ async def gemini_ocr_upload_processed(
         regions=result["regions"],
         annotated_image=result["annotated_image"],
         cleaned_image=result["cleaned_image"],
+        saved_as=saved_as,
         model=result["model"],
         timing=TimingInfo(
             total_ms=_ms(t0, t2),
@@ -437,11 +461,18 @@ function renderImages(data) {
 function renderTiming(data) {
   const t = data.timing;
   const key = MODES[currentMode].timingKey;
-  if (!t) { document.getElementById('timingInfo').innerHTML = `<span>${data.model}</span>`; return; }
-  document.getElementById('timingInfo').innerHTML =
-    `total <span>${t.total_ms} ms</span> &nbsp;|&nbsp; ` +
-    `gemini <span>${t.details[key] ?? '—'} ms</span> &nbsp;|&nbsp; ` +
-    `model <span>${data.model}</span>`;
+  let html = '';
+  if (t) {
+    html += `total <span>${t.total_ms} ms</span> &nbsp;|&nbsp; ` +
+            `gemini <span>${t.details[key] ?? '—'} ms</span> &nbsp;|&nbsp; ` +
+            `model <span>${data.model}</span>`;
+  } else {
+    html += `model <span>${data.model}</span>`;
+  }
+  if (data.saved_as) {
+    html += `<br>saved → <span style="color:#86efac">${data.saved_as}</span>`;
+  }
+  document.getElementById('timingInfo').innerHTML = html;
 }
 
 function renderFields(fields) {

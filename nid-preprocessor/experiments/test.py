@@ -4,7 +4,7 @@ from kiri_ocr import OCR
 ocr = OCR()
 
 # Extract text from document
-text, results = ocr.extract_text("../sample_imgs/id6.jpg")
+text, results = ocr.extract_text("../sample_imgs/id9.png")
 print(text)
 
 # Get detailed box-by-box results

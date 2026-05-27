@@ -14,9 +14,16 @@ class PreprocessRequest(BaseModel):
         return v
 
 
+class TimingInfo(BaseModel):
+    """Wall-clock milliseconds for each processing step."""
+    total_ms: float
+    details: dict[str, float] = {}
+
+
 class PreprocessResponse(BaseModel):
     segmented_image: str  # base64 — for CamDX OCR
     processed_image: str  # base64 — for storage (normalised + WebP + watermark)
+    timing: TimingInfo | None = None
 
 
 class PreprocessOCRRequest(PreprocessRequest):
@@ -36,3 +43,4 @@ class GeminiOCRResponse(BaseModel):
     text: str
     fields: dict[str, Any]
     model: str
+    timing: TimingInfo | None = None

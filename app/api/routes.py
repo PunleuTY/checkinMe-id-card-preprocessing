@@ -130,7 +130,10 @@ async def gemini_ocr_upload(
 ) -> GeminiOCRResponse:
     from experiments.gemini.extractor import extract_from_bytes
 
+    t0 = time.perf_counter()
     data = await file.read()
+    t1 = time.perf_counter()
+
     try:
         result = await run_in_threadpool(
             extract_from_bytes, data, file.content_type, model or None
@@ -141,8 +144,21 @@ async def gemini_ocr_upload(
         logger.exception("gemini extraction failed")
         raise HTTPException(status_code=502, detail=f"Gemini error: {e}")
 
+    t2 = time.perf_counter()
+
+    def _ms(a, b): return round((b - a) * 1000, 2)
+
     return GeminiOCRResponse(
-        text=result["text"], fields=result["fields"], model=result["model"]
+        text=result["text"],
+        fields=result["fields"],
+        model=result["model"],
+        timing=TimingInfo(
+            total_ms=_ms(t0, t2),
+            details={
+                "upload_read_ms": _ms(t0, t1),
+                "gemini_api_ms": _ms(t1, t2),
+            },
+        ),
     )
 
 

@@ -49,3 +49,7 @@ class GeminiOCRResponse(BaseModel):
 class GeminiOCRAnnotatedResponse(GeminiOCRResponse):
     regions: dict[str, Any]          # field → [y_min, x_min, y_max, x_max] or null
     annotated_image: str             # base64 JPEG with colored bounding boxes drawn
+
+
+class GeminiOCRProcessedResponse(GeminiOCRAnnotatedResponse):
+    cleaned_image: str               # base64 JPEG — de-skewed, background removed, NO boxes (store this)

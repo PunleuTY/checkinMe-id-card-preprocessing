@@ -1,8 +1,10 @@
 import logging
+import time
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from app.schemas.preprocess import (
+    TimingInfo,
     PreprocessRequest,
     PreprocessResponse,
     PreprocessOCRRequest,

@@ -16,6 +16,8 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# PROMPT VERSION 1
+
 PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NID).
   The card contains text in both Khmer script and Latin/English characters.
 

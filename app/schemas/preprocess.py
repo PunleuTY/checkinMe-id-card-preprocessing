@@ -51,6 +51,15 @@ class GeminiOCRAnnotatedResponse(GeminiOCRResponse):
     annotated_image: str             # base64 JPEG with colored bounding boxes drawn
 
 
+class QualityCheck(BaseModel):
+    valid: bool
+    aspect_ratio: float
+    mrz_lines_found: int
+    key_fields_found: int
+    reason: str                      # "OK" or a description of what failed
+
+
 class GeminiOCRProcessedResponse(GeminiOCRAnnotatedResponse):
     cleaned_image: str               # base64 JPEG — de-skewed, background removed, NO boxes (store this)
-    saved_as: str | None = None      # relative path where the cleaned image was saved locally
+    quality_check: QualityCheck      # validation result — only saved when valid is True
+    saved_as: str | None = None      # relative path written to disk; null if quality check failed

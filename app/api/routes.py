@@ -312,12 +312,13 @@ async def gemini_ocr_upload_processed(
     import base64
     cleaned_bytes = base64.b64decode(result["cleaned_image"])
     quality = _validate_cleaned_image(cleaned_bytes, result["fields"])
-    saved_as = (
-        _save_cleaned_image(cleaned_bytes, file.filename or "card.jpg")
-        if quality["valid"] else None
-    )
-    if not quality["valid"]:
-        logger.warning("quality gate failed — image not saved: %s", quality["reason"])
+    if quality["valid"]:
+        saved_as = _save_cleaned_image(cleaned_bytes, file.filename or "card.jpg")
+        saved_type = "cleaned"
+    else:
+        logger.warning("quality gate failed (%s) — storing original image", quality["reason"])
+        saved_as = _save_cleaned_image(data, file.filename or "card.jpg")
+        saved_type = "original"
 
     def _ms(a, b):
         return round((b - a) * 1000, 2)
@@ -330,6 +331,7 @@ async def gemini_ocr_upload_processed(
         cleaned_image=result["cleaned_image"],
         quality_check=QualityCheck(**quality),
         saved_as=saved_as,
+        saved_type=saved_type,
         model=result["model"],
         timing=TimingInfo(
             total_ms=_ms(t0, t2),
@@ -526,11 +528,11 @@ function renderTiming(data) {
   if (data.quality_check) {
     const qc = data.quality_check;
     if (qc.valid) {
-      html += `<br>quality <span style="color:#86efac">✓ passed</span>`;
-      if (data.saved_as) html += ` &nbsp;·&nbsp; saved → <span style="color:#86efac">${data.saved_as}</span>`;
+      html += `<br>quality <span style="color:#86efac">✓ passed</span>` +
+              ` &nbsp;·&nbsp; saved cleaned → <span style="color:#86efac">${data.saved_as}</span>`;
     } else {
-      html += `<br>quality <span style="color:#f87171">✗ failed — ${qc.reason}</span>`;
-      html += ` <span style="color:#666">(image not saved)</span>`;
+      html += `<br>quality <span style="color:#f87171">✗ failed — ${qc.reason}</span>` +
+              ` &nbsp;·&nbsp; saved original → <span style="color:#fbbf24">${data.saved_as}</span>`;
     }
   }
   document.getElementById('timingInfo').innerHTML = html;

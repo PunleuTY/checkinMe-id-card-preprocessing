@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # Gemini (experiments)
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-2.5-pro"
 
     class Config:
         env_file = ".env"

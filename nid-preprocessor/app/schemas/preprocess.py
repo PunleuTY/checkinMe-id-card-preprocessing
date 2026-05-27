@@ -26,3 +26,13 @@ class PreprocessOCRRequest(PreprocessRequest):
 class PreprocessOCRResponse(PreprocessResponse):
     text: str
     lines: list[dict[str, Any]]
+
+
+class GeminiOCRRequest(PreprocessRequest):
+    model: str | None = None  # override settings.gemini_model
+
+
+class GeminiOCRResponse(BaseModel):
+    text: str
+    fields: dict[str, Any]
+    model: str

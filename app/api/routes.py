@@ -209,6 +209,145 @@ async def gemini_ocr_upload_annotated(
     )
 
 
+@router.get("/gemini-ocr/preview", response_class=HTMLResponse)
+async def gemini_ocr_preview():
+    """Visual testing page — upload a card image and see annotated regions + fields inline."""
+    return HTMLResponse(content="""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gemini OCR — Visual Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 24px; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #fff; }
+
+  .controls { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; }
+  label { font-size: 12px; color: #aaa; display: block; margin-bottom: 4px; }
+  input[type=file] { background: #1e2130; border: 1px solid #333; border-radius: 6px;
+    padding: 8px 10px; color: #e0e0e0; font-size: 13px; cursor: pointer; }
+  select { background: #1e2130; border: 1px solid #333; border-radius: 6px;
+    padding: 8px 10px; color: #e0e0e0; font-size: 13px; }
+  button { background: #3b6ef5; border: none; border-radius: 6px; padding: 9px 20px;
+    color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #2c5ce8; }
+  button:disabled { background: #555; cursor: not-allowed; }
+
+  .result { display: none; gap: 24px; margin-top: 8px; }
+  .result.visible { display: flex; flex-wrap: wrap; }
+
+  .img-panel { flex: 1; min-width: 300px; }
+  .img-panel img { width: 100%; border-radius: 8px; border: 1px solid #333; }
+
+  .fields-panel { flex: 1; min-width: 300px; }
+  .timing { font-size: 11px; color: #888; margin-bottom: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 6px 8px; background: #1a1d2e; color: #aaa;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  td { padding: 7px 8px; border-top: 1px solid #222; vertical-align: top; word-break: break-all; }
+  td:first-child { color: #7b93d4; font-size: 12px; white-space: nowrap; width: 38%; }
+  td:last-child { color: #e0e0e0; }
+  .null { color: #555 !important; font-style: italic; }
+
+  .error { color: #ff6b6b; background: #2a1a1a; border: 1px solid #5a2a2a;
+    border-radius: 6px; padding: 12px 16px; margin-top: 12px; font-size: 13px; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #555;
+    border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+    vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<h1>Gemini OCR — Visual Region Preview</h1>
+
+<div class="controls">
+  <div>
+    <label>Image file</label>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+  <div>
+    <label>Model</label>
+    <select id="modelSelect">
+      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+    </select>
+  </div>
+  <button id="runBtn" onclick="run()">Run</button>
+</div>
+
+<div id="error" class="error" style="display:none"></div>
+<div class="result" id="result">
+  <div class="img-panel">
+    <img id="annotatedImg" src="" alt="Annotated image">
+  </div>
+  <div class="fields-panel">
+    <div class="timing" id="timingInfo"></div>
+    <table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody id="fieldsBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function run() {
+  const fileInput = document.getElementById('fileInput');
+  const model = document.getElementById('modelSelect').value;
+  const btn = document.getElementById('runBtn');
+  const errDiv = document.getElementById('error');
+  const resultDiv = document.getElementById('result');
+
+  if (!fileInput.files.length) { alert('Please select an image file.'); return; }
+
+  errDiv.style.display = 'none';
+  resultDiv.classList.remove('visible');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Running…';
+
+  const form = new FormData();
+  form.append('file', fileInput.files[0]);
+  form.append('model', model);
+
+  try {
+    const resp = await fetch('/gemini-ocr/upload/annotated', { method: 'POST', body: form });
+    if (!resp.ok) {
+      const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(detail.detail || resp.statusText);
+    }
+    const data = await resp.json();
+
+    document.getElementById('annotatedImg').src = 'data:image/jpeg;base64,' + data.annotated_image;
+
+    const t = data.timing;
+    document.getElementById('timingInfo').textContent =
+      t ? `total ${t.total_ms} ms  |  gemini ${t.details.gemini_api_ms} ms  |  model: ${data.model}` : `model: ${data.model}`;
+
+    const tbody = document.getElementById('fieldsBody');
+    tbody.innerHTML = '';
+    for (const [key, val] of Object.entries(data.fields)) {
+      const isEmpty = val === null || val === undefined || (Array.isArray(val) && val.length === 0);
+      const display = isEmpty ? 'null' : (Array.isArray(val) ? val.join(' / ') : String(val));
+      tbody.innerHTML += `<tr>
+        <td>${key}</td>
+        <td class="${isEmpty ? 'null' : ''}">${display}</td>
+      </tr>`;
+    }
+
+    resultDiv.classList.add('visible');
+  } catch (e) {
+    errDiv.textContent = 'Error: ' + e.message;
+    errDiv.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Run';
+  }
+}
+</script>
+</body>
+</html>""")
+
+
 # @router.post("/gemini-ocr", response_model=GeminiOCRResponse)
 # async def gemini_ocr(payload: GeminiOCRRequest) -> GeminiOCRResponse:
 #     from experiments.gemini.extractor import extract_from_bytes

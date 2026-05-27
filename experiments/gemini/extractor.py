@@ -10,6 +10,7 @@ Requires GEMINI_API_KEY (or GOOGLE_API_KEY) in the environment / .env.
 
 import json
 import logging
+import re
 
 from app.core.config import settings
 
@@ -137,6 +138,60 @@ def _parse_json(raw: str) -> dict:
     return json.loads(cleaned)
 
 
+def _yymmdd_to_ddmmyyyy(yymmdd: str) -> str | None:
+    """Convert MRZ date YYMMDD → DD/MM/YYYY, century inferred by threshold."""
+    if not re.fullmatch(r"\d{6}", yymmdd):
+        return None
+    yy = int(yymmdd[:2])
+    mm = yymmdd[2:4]
+    dd = yymmdd[4:6]
+    year = 2000 + yy if yy <= 30 else 1900 + yy
+    return f"{dd}/{mm}/{year}"
+
+
+def _parse_mrz(fields: dict) -> dict:
+    """
+    Parse MRZ2 and MRZ3 programmatically to produce reliable field values.
+
+    MRZ is machine-readable and has a fixed format, so these values are more
+    trustworthy than vision extraction for dates, gender, and English names.
+    Returns a dict of corrections/backfills to apply on top of vision results.
+    """
+    corrections = {}
+
+    mrz2 = (fields.get("MRZ2") or "").replace(" ", "")
+    mrz3 = (fields.get("MRZ3") or "").replace(" ", "")
+
+    # MRZ2: YYMMDD(6) + check(1) + sex(1) + expiry_YYMMDD(6) + check(1) + KHM(3) + ...
+    if len(mrz2) >= 15:
+        dob_raw = mrz2[0:6]
+        gender_raw = mrz2[7] if len(mrz2) > 7 else None
+        expiry_raw = mrz2[8:14]
+
+        dob = _yymmdd_to_ddmmyyyy(dob_raw)
+        if dob:
+            corrections["dob"] = dob
+
+        if gender_raw in ("M", "F"):
+            corrections["gender"] = gender_raw
+
+        expiry = _yymmdd_to_ddmmyyyy(expiry_raw)
+        if expiry:
+            corrections["expiredDate"] = expiry
+
+    # MRZ3: LASTNAME<<FIRSTNAME<<<<<<<<<<<<<<
+    if mrz3:
+        parts = mrz3.split("<<", 1)
+        last = parts[0].replace("<", " ").strip()
+        first = parts[1].replace("<", " ").strip() if len(parts) > 1 else None
+        if last:
+            corrections["lastNameEn"] = last
+        if first:
+            corrections["firstNameEn"] = first
+
+    return corrections
+
+
 def extract_from_bytes(
     image_bytes: bytes,
     mime_type: str | None = None,
@@ -147,11 +202,11 @@ def extract_from_bytes(
     Run Gemini extraction on raw image bytes.
 
     Returns {"text": str, "fields": dict, "model": str, "raw": str}.
+    MRZ lines are parsed programmatically to backfill/correct vision results.
     """
     from google.genai import types
 
     client = _build_client(api_key)
-    # Swagger pre-fills optional string fields with the literal "string"; treat as unset.
     model_name = model if (model and model != "string") else settings.gemini_model
     mime = (
         mime_type
@@ -187,8 +242,18 @@ def extract_from_bytes(
         logger.warning("gemini: response was not valid JSON, returning raw text")
         text, fields = raw, {}
 
-    logger.info("gemini: extracted %d chars, %d fields", len(text), len(fields))
+    # MRZ-derived values are deterministic — use them to backfill/correct vision fields
+    mrz_corrections = _parse_mrz(fields)
+    for key, val in mrz_corrections.items():
+        existing = fields.get(key)
+        if not existing:
+            fields[key] = val
+            logger.debug("mrz backfill: %s = %r", key, val)
+        elif existing != val:
+            logger.info("mrz correction: %s %r → %r", key, existing, val)
+            fields[key] = val
 
+    logger.info("gemini: extracted %d chars, %d fields", len(text), len(fields))
     return {"text": text, "fields": fields, "model": model_name, "raw": raw}
 
 

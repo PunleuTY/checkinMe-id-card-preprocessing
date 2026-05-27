@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from app.schemas.preprocess import (
     TimingInfo,
+    QualityCheck,
     PreprocessRequest,
     PreprocessResponse,
     PreprocessOCRRequest,
@@ -36,6 +37,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _OUTPUTS_DIR = Path(__file__).resolve().parents[2] / "sample_imgs" / "outputs"
+
+
+def _validate_cleaned_image(cleaned_bytes: bytes, fields: dict) -> dict:
+    """
+    Quality gate before persisting a processed card image.
+
+    Checks three independent signals:
+      1. Aspect ratio — ID-1 cards are ~1.586:1; a bad Gemini crop produces wrong proportions.
+      2. MRZ presence — MRZ spans the full bottom edge; if missing, the card wasn't fully captured.
+      3. Key field count — if fewer than 3 core fields extracted, the crop region was wrong.
+
+    Returns a dict matching the QualityCheck schema.
+    """
+    import io
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(cleaned_bytes))
+    w, h = img.size
+    long_side, short_side = max(w, h), min(w, h)
+    ratio = round(long_side / short_side, 3) if short_side > 0 else 0.0
+    ratio_ok = 1.2 <= ratio <= 2.1  # ID-1 is 1.586; allow tolerance for slight mis-crops
+
+    mrz_count = sum(1 for k in ("MRZ1", "MRZ2", "MRZ3") if fields.get(k))
+    mrz_ok = mrz_count >= 2
+
+    critical = ("idNumber", "lastNameKh", "firstNameKh", "dob", "lastNameEn", "firstNameEn")
+    field_count = sum(1 for k in critical if fields.get(k))
+    fields_ok = field_count >= 3
+
+    valid = ratio_ok and (mrz_ok or fields_ok)
+
+    reasons = []
+    if not ratio_ok:
+        reasons.append(f"aspect ratio {ratio} outside 1.2–2.1 (expected ~1.59 for ID-1)")
+    if not mrz_ok:
+        reasons.append(f"only {mrz_count}/3 MRZ lines detected")
+    if not fields_ok:
+        reasons.append(f"only {field_count}/6 key fields extracted")
+
+    return {
+        "valid": valid,
+        "aspect_ratio": ratio,
+        "mrz_lines_found": mrz_count,
+        "key_fields_found": field_count,
+        "reason": "OK" if not reasons else "; ".join(reasons),
+    }
 
 
 def _save_cleaned_image(image_bytes: bytes, original_filename: str) -> str:
@@ -264,7 +311,13 @@ async def gemini_ocr_upload_processed(
 
     import base64
     cleaned_bytes = base64.b64decode(result["cleaned_image"])
-    saved_as = _save_cleaned_image(cleaned_bytes, file.filename or "card.jpg")
+    quality = _validate_cleaned_image(cleaned_bytes, result["fields"])
+    saved_as = (
+        _save_cleaned_image(cleaned_bytes, file.filename or "card.jpg")
+        if quality["valid"] else None
+    )
+    if not quality["valid"]:
+        logger.warning("quality gate failed — image not saved: %s", quality["reason"])
 
     def _ms(a, b):
         return round((b - a) * 1000, 2)
@@ -275,6 +328,7 @@ async def gemini_ocr_upload_processed(
         regions=result["regions"],
         annotated_image=result["annotated_image"],
         cleaned_image=result["cleaned_image"],
+        quality_check=QualityCheck(**quality),
         saved_as=saved_as,
         model=result["model"],
         timing=TimingInfo(
@@ -469,8 +523,15 @@ function renderTiming(data) {
   } else {
     html += `model <span>${data.model}</span>`;
   }
-  if (data.saved_as) {
-    html += `<br>saved → <span style="color:#86efac">${data.saved_as}</span>`;
+  if (data.quality_check) {
+    const qc = data.quality_check;
+    if (qc.valid) {
+      html += `<br>quality <span style="color:#86efac">✓ passed</span>`;
+      if (data.saved_as) html += ` &nbsp;·&nbsp; saved → <span style="color:#86efac">${data.saved_as}</span>`;
+    } else {
+      html += `<br>quality <span style="color:#f87171">✗ failed — ${qc.reason}</span>`;
+      html += ` <span style="color:#666">(image not saved)</span>`;
+    }
   }
   document.getElementById('timingInfo').innerHTML = html;
 }

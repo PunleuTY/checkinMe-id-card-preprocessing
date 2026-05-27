@@ -59,7 +59,6 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
       "issuedDate": null,
       "address": null,
       "pob": null,
-      "distinguishingFeatures": [],
       "MRZ1": null,
       "MRZ2": null,
       "MRZ3": null

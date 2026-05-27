@@ -78,7 +78,8 @@ async def preprocess_upload(file: UploadFile = File(...)) -> PreprocessResponse:
     processed_b64 = ndarray_to_webp_b64(img, quality=settings.webp_quality)
     t5 = time.perf_counter()
 
-    def _ms(a, b): return round((b - a) * 1000, 2)
+    def _ms(a, b):
+        return round((b - a) * 1000, 2)
 
     return PreprocessResponse(
         segmented_image=ndarray_to_b64(img),
@@ -149,7 +150,8 @@ async def gemini_ocr_upload(
 
     t2 = time.perf_counter()
 
-    def _ms(a, b): return round((b - a) * 1000, 2)
+    def _ms(a, b):
+        return round((b - a) * 1000, 2)
 
     return GeminiOCRResponse(
         text=result["text"],
@@ -192,7 +194,8 @@ async def gemini_ocr_upload_annotated(
 
     t2 = time.perf_counter()
 
-    def _ms(a, b): return round((b - a) * 1000, 2)
+    def _ms(a, b):
+        return round((b - a) * 1000, 2)
 
     return GeminiOCRAnnotatedResponse(
         text=result["text"],
@@ -240,7 +243,8 @@ async def gemini_ocr_upload_processed(
 
     t2 = time.perf_counter()
 
-    def _ms(a, b): return round((b - a) * 1000, 2)
+    def _ms(a, b):
+        return round((b - a) * 1000, 2)
 
     return GeminiOCRProcessedResponse(
         text=result["text"],
@@ -261,61 +265,87 @@ async def gemini_ocr_upload_processed(
 
 @router.get("/gemini-ocr/preview", response_class=HTMLResponse)
 async def gemini_ocr_preview():
-    """Visual testing page — upload a card image and see annotated regions + fields inline."""
+    """Visual testing hub — all three Gemini service modes in one page."""
     return HTMLResponse(content="""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Gemini OCR — Visual Preview</title>
+<title>Gemini OCR — Preview</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, sans-serif; background: #0f1117; color: #e0e0e0; padding: 24px; }
-  h1 { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: #fff; }
+  h1 { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 20px; }
 
+  /* mode tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: 1px solid #333; background: #1a1d2e; color: #888;
+    transition: all .15s; }
+  .tab:hover { color: #ccc; }
+  .tab.active { background: #3b6ef5; border-color: #3b6ef5; color: #fff; }
+
+  /* controls */
   .controls { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; }
   label { font-size: 12px; color: #aaa; display: block; margin-bottom: 4px; }
   input[type=file] { background: #1e2130; border: 1px solid #333; border-radius: 6px;
     padding: 8px 10px; color: #e0e0e0; font-size: 13px; cursor: pointer; }
   select { background: #1e2130; border: 1px solid #333; border-radius: 6px;
     padding: 8px 10px; color: #e0e0e0; font-size: 13px; }
-  button { background: #3b6ef5; border: none; border-radius: 6px; padding: 9px 20px;
+  button#runBtn { background: #3b6ef5; border: none; border-radius: 6px; padding: 9px 22px;
     color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
-  button:hover { background: #2c5ce8; }
-  button:disabled { background: #555; cursor: not-allowed; }
+  button#runBtn:hover { background: #2c5ce8; }
+  button#runBtn:disabled { background: #555; cursor: not-allowed; }
 
-  .result { display: none; gap: 24px; margin-top: 8px; }
+  /* mode hint */
+  .mode-hint { font-size: 12px; color: #666; margin-bottom: 20px; padding: 8px 12px;
+    background: #161820; border-left: 3px solid #3b6ef5; border-radius: 0 6px 6px 0; }
+
+  /* results */
+  .result { display: none; gap: 24px; margin-top: 4px; }
   .result.visible { display: flex; flex-wrap: wrap; }
 
-  .img-panel { flex: 1; min-width: 300px; }
-  .img-panel img { width: 100%; border-radius: 8px; border: 1px solid #333; }
-  .img-stack { display: flex; flex-direction: column; gap: 16px; flex: 1.4; min-width: 320px; }
-  .img-card-title { font-size: 12px; font-weight: 600; margin-bottom: 6px; display: flex;
-    align-items: center; gap: 8px; }
+  .img-stack { display: flex; flex-direction: column; gap: 16px; flex: 1.4; min-width: 300px; }
+  .img-single { flex: 1.4; min-width: 300px; }
+  .img-block img { width: 100%; border-radius: 8px; border: 1px solid #2a2d3e; }
+  .img-label { font-size: 11px; font-weight: 600; margin-bottom: 6px; display: flex;
+    align-items: center; gap: 8px; color: #ccc; }
   .badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px;
     text-transform: uppercase; letter-spacing: .04em; }
-  .badge-store { background: #1c4; color: #042; }
-  .badge-preview { background: #555; color: #ddd; }
+  .badge-db   { background: #14532d; color: #86efac; }
+  .badge-preview { background: #2a2d3e; color: #94a3b8; }
 
-  .fields-panel { flex: 1; min-width: 300px; }
-  .timing { font-size: 11px; color: #888; margin-bottom: 12px; }
+  /* fields table */
+  .fields-panel { flex: 1; min-width: 280px; }
+  .timing { font-size: 11px; color: #666; margin-bottom: 10px; line-height: 1.6; }
+  .timing span { color: #94a3b8; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 6px 8px; background: #1a1d2e; color: #aaa;
-    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-  td { padding: 7px 8px; border-top: 1px solid #222; vertical-align: top; word-break: break-all; }
-  td:first-child { color: #7b93d4; font-size: 12px; white-space: nowrap; width: 38%; }
+  th { text-align: left; padding: 6px 8px; background: #161820; color: #555;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+  td { padding: 7px 8px; border-top: 1px solid #1a1d2e; vertical-align: top; word-break: break-all; }
+  td:first-child { color: #7b93d4; font-size: 12px; white-space: nowrap; width: 40%; }
   td:last-child { color: #e0e0e0; }
-  .null { color: #555 !important; font-style: italic; }
+  .null-val { color: #383d50 !important; font-style: italic; }
 
-  .error { color: #ff6b6b; background: #2a1a1a; border: 1px solid #5a2a2a;
+  .error { color: #f87171; background: #1c1010; border: 1px solid #3f1414;
     border-radius: 6px; padding: 12px 16px; margin-top: 12px; font-size: 13px; }
-  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #555;
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #444;
     border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
     vertical-align: middle; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
-<h1>Gemini OCR — Visual Region Preview</h1>
+<h1>Gemini OCR</h1>
+<p class="subtitle">Visual testing hub — switch modes to compare pipeline stages</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="setMode('full')">Full pipeline</div>
+  <div class="tab" onclick="setMode('annotated')">Annotate + extract</div>
+  <div class="tab" onclick="setMode('extract')">Extract only</div>
+</div>
+
+<div class="mode-hint" id="modeHint"></div>
 
 <div class="controls">
   <div>
@@ -334,17 +364,10 @@ async def gemini_ocr_preview():
 </div>
 
 <div id="error" class="error" style="display:none"></div>
+
 <div class="result" id="result">
-  <div class="img-stack">
-    <div>
-      <div class="img-card-title">Cleaned image <span class="badge badge-store">stored in DB</span></div>
-      <div class="img-panel"><img id="cleanedImg" src="" alt="Cleaned image"></div>
-    </div>
-    <div>
-      <div class="img-card-title">Annotated <span class="badge badge-preview">preview only</span></div>
-      <div class="img-panel"><img id="annotatedImg" src="" alt="Annotated image"></div>
-    </div>
-  </div>
+  <!-- img area: swapped by JS depending on mode -->
+  <div id="imgArea"></div>
   <div class="fields-panel">
     <div class="timing" id="timingInfo"></div>
     <table>
@@ -355,14 +378,92 @@ async def gemini_ocr_preview():
 </div>
 
 <script>
+const MODES = {
+  full: {
+    endpoint: '/gemini-ocr/upload/processed',
+    hint: 'Stage 1: Gemini detects card corners → PIL de-skews + crops background. Stage 2: annotate + extract on cleaned image. 2 Gemini calls.',
+    timingKey: 'gemini_pipeline_ms',
+  },
+  annotated: {
+    endpoint: '/gemini-ocr/upload/annotated',
+    hint: 'Gemini extracts fields and returns bounding box coordinates. Colored boxes are drawn locally with PIL. 1 Gemini call.',
+    timingKey: 'gemini_api_ms',
+  },
+  extract: {
+    endpoint: '/gemini-ocr/upload',
+    hint: 'Gemini extracts structured fields only. No bounding boxes, no preprocessing. Fastest — 1 Gemini call.',
+    timingKey: 'gemini_api_ms',
+  },
+};
+
+let currentMode = 'full';
+
+function setMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['full','annotated','extract'][i] === mode);
+  });
+  document.getElementById('modeHint').textContent = MODES[mode].hint;
+  document.getElementById('result').classList.remove('visible');
+  document.getElementById('error').style.display = 'none';
+}
+
+function renderImages(data) {
+  const area = document.getElementById('imgArea');
+  if (currentMode === 'full') {
+    area.className = 'img-stack';
+    area.innerHTML = `
+      <div class="img-block">
+        <div class="img-label">Cleaned image <span class="badge badge-db">store in DB</span></div>
+        <img src="data:image/jpeg;base64,${data.cleaned_image}" alt="Cleaned">
+      </div>
+      <div class="img-block">
+        <div class="img-label">Annotated <span class="badge badge-preview">preview only</span></div>
+        <img src="data:image/jpeg;base64,${data.annotated_image}" alt="Annotated">
+      </div>`;
+  } else if (currentMode === 'annotated') {
+    area.className = 'img-single';
+    area.innerHTML = `
+      <div class="img-block">
+        <div class="img-label">Annotated <span class="badge badge-preview">preview only</span></div>
+        <img src="data:image/jpeg;base64,${data.annotated_image}" alt="Annotated">
+      </div>`;
+  } else {
+    area.className = '';
+    area.innerHTML = '';
+  }
+}
+
+function renderTiming(data) {
+  const t = data.timing;
+  const key = MODES[currentMode].timingKey;
+  if (!t) { document.getElementById('timingInfo').innerHTML = `<span>${data.model}</span>`; return; }
+  document.getElementById('timingInfo').innerHTML =
+    `total <span>${t.total_ms} ms</span> &nbsp;|&nbsp; ` +
+    `gemini <span>${t.details[key] ?? '—'} ms</span> &nbsp;|&nbsp; ` +
+    `model <span>${data.model}</span>`;
+}
+
+function renderFields(fields) {
+  const tbody = document.getElementById('fieldsBody');
+  tbody.innerHTML = '';
+  for (const [key, val] of Object.entries(fields)) {
+    const empty = val === null || val === undefined || (Array.isArray(val) && !val.length);
+    const display = empty ? 'null' : (Array.isArray(val) ? val.join(' · ') : String(val));
+    tbody.innerHTML += `<tr>
+      <td>${key}</td>
+      <td class="${empty ? 'null-val' : ''}">${display}</td>
+    </tr>`;
+  }
+}
+
 async function run() {
   const fileInput = document.getElementById('fileInput');
-  const model = document.getElementById('modelSelect').value;
+  if (!fileInput.files.length) { alert('Please select an image file.'); return; }
+
   const btn = document.getElementById('runBtn');
   const errDiv = document.getElementById('error');
   const resultDiv = document.getElementById('result');
-
-  if (!fileInput.files.length) { alert('Please select an image file.'); return; }
 
   errDiv.style.display = 'none';
   resultDiv.classList.remove('visible');
@@ -371,34 +472,18 @@ async function run() {
 
   const form = new FormData();
   form.append('file', fileInput.files[0]);
-  form.append('model', model);
+  form.append('model', document.getElementById('modelSelect').value);
 
   try {
-    const resp = await fetch('/gemini-ocr/upload/processed', { method: 'POST', body: form });
+    const resp = await fetch(MODES[currentMode].endpoint, { method: 'POST', body: form });
     if (!resp.ok) {
       const detail = await resp.json().catch(() => ({ detail: resp.statusText }));
       throw new Error(detail.detail || resp.statusText);
     }
     const data = await resp.json();
-
-    document.getElementById('cleanedImg').src = 'data:image/jpeg;base64,' + data.cleaned_image;
-    document.getElementById('annotatedImg').src = 'data:image/jpeg;base64,' + data.annotated_image;
-
-    const t = data.timing;
-    document.getElementById('timingInfo').textContent =
-      t ? `total ${t.total_ms} ms  |  gemini pipeline ${t.details.gemini_pipeline_ms} ms  |  model: ${data.model}` : `model: ${data.model}`;
-
-    const tbody = document.getElementById('fieldsBody');
-    tbody.innerHTML = '';
-    for (const [key, val] of Object.entries(data.fields)) {
-      const isEmpty = val === null || val === undefined || (Array.isArray(val) && val.length === 0);
-      const display = isEmpty ? 'null' : (Array.isArray(val) ? val.join(' / ') : String(val));
-      tbody.innerHTML += `<tr>
-        <td>${key}</td>
-        <td class="${isEmpty ? 'null' : ''}">${display}</td>
-      </tr>`;
-    }
-
+    renderImages(data);
+    renderTiming(data);
+    renderFields(data.fields || {});
     resultDiv.classList.add('visible');
   } catch (e) {
     errDiv.textContent = 'Error: ' + e.message;
@@ -408,6 +493,9 @@ async function run() {
     btn.textContent = 'Run';
   }
 }
+
+// init hint on load
+setMode('full');
 </script>
 </body>
 </html>""")

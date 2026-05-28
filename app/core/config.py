@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"  # tolerate unrelated keys in a shared .env (e.g. Laravel GEMINI_SERVICE_*)
 
 
 settings = Settings()

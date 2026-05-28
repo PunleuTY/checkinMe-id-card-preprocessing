@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Client;
 
-use Illuminate\Http\Request;
+use Illuminate\Http\Request; 
 use App\Services\GeminiService;
 use App\Http\Controllers\Controller;
 

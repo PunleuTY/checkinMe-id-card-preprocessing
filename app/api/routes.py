@@ -125,7 +125,10 @@ def _preprocess_image(image_b64: str):
 #     )
 
 
-@router.post("/preprocess/upload", response_model=PreprocessResponse)
+# DISABLED — not part of the detect+extract integration. Decorator commented out so
+# FastAPI does not register the route; function kept for reference / future restore.
+# See propose-gemini-dev-integration-architecture.md.
+# @router.post("/preprocess/upload", response_model=PreprocessResponse)
 async def preprocess_upload(file: UploadFile = File(...)) -> PreprocessResponse:
     t0 = time.perf_counter()
 
@@ -163,7 +166,9 @@ async def preprocess_upload(file: UploadFile = File(...)) -> PreprocessResponse:
     )
 
 
-@router.post("/preprocess-ocr/upload", response_model=PreprocessOCRResponse)
+# DISABLED — not part of the detect+extract integration (OpenCV + kiri-OCR path).
+# Decorator commented out so the route is not registered; function kept for reference.
+# @router.post("/preprocess-ocr/upload", response_model=PreprocessOCRResponse)
 async def preprocess_ocr_upload(
     file: UploadFile = File(...),
     decode_method: str = Form("accurate"),
@@ -233,7 +238,9 @@ async def gemini_ocr_upload(
     )
 
 
-@router.post("/gemini-ocr/upload/annotated", response_model=GeminiOCRAnnotatedResponse)
+# DISABLED — annotation/bounding-box route, not part of the detect+extract integration.
+# Decorator commented out so the route is not registered; function kept for reference.
+# @router.post("/gemini-ocr/upload/annotated", response_model=GeminiOCRAnnotatedResponse)
 async def gemini_ocr_upload_annotated(
     file: UploadFile = File(...),
     model: str = Form(settings.gemini_model),
@@ -279,7 +286,9 @@ async def gemini_ocr_upload_annotated(
     )
 
 
-@router.post("/gemini-ocr/upload/processed", response_model=GeminiOCRProcessedResponse)
+# DISABLED — cleaned-image preprocessing + quality-gate route (2 Gemini calls), not part
+# of the detect+extract integration. Decorator commented out; function kept for reference.
+# @router.post("/gemini-ocr/upload/processed", response_model=GeminiOCRProcessedResponse)
 async def gemini_ocr_upload_processed(
     file: UploadFile = File(...),
     model: str = Form(settings.gemini_model),
@@ -343,7 +352,9 @@ async def gemini_ocr_upload_processed(
     )
 
 
-@router.get("/gemini-ocr/preview", response_class=HTMLResponse)
+# DISABLED — visual testing hub for the annotated/processed modes, not part of the
+# detect+extract integration. Decorator commented out; function kept for reference.
+# @router.get("/gemini-ocr/preview", response_class=HTMLResponse)
 async def gemini_ocr_preview():
     """Visual testing hub — all three Gemini service modes in one page."""
     return HTMLResponse(content="""<!DOCTYPE html>

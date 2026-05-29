@@ -9,3 +9,4 @@ pydantic
 pydantic-settings
 pytest
 httpx
+google-genai

@@ -1,0 +1,34 @@
+# Keep the build context (and cold-start image) small.
+.venv
+venv
+env
+.git
+.gitignore
+.github
+.vscode
+.idea
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.coverage
+htmlcov
+
+# Local-only / not needed in the service image
+.env
+.env.local
+.env.production
+sample_imgs
+sample_images
+tests
+experiments/ocr
+*.md
+deploy
+
+# Laravel companions (not part of the Python service)
+gemini-laravel-test
+mock-gemini-laravel
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -21,13 +21,13 @@ htmlcov
 sample_imgs
 sample_images
 tests
-experiments/ocr
 *.md
 deploy
 
-# Laravel companions (not part of the Python service)
-gemini-laravel-test
-mock-gemini-laravel
+# experiments/ holds the OCR path (only used by disabled routes) and the
+# Laravel test apps (gemini-laravel-test, mock-gemini-laravel) — none needed
+# in the service image. The live /gemini-ocr/upload route uses gemini/ instead.
+experiments
 
 # OS noise
 .DS_Store

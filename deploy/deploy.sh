@@ -21,7 +21,7 @@ GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 MEMORY="${MEMORY:-1Gi}"
 CPU="${CPU:-1}"
 CONCURRENCY="${CONCURRENCY:-8}"
-TIMEOUT="${TIMEOUT:-120}"
+TIMEOUT="${TIMEOUT:-300}"        # Cloud Run request timeout; > Laravel's 120s (gemini-2.5-pro is slow)
 MIN_INSTANCES="${MIN_INSTANCES:-0}"        # 0 = scale to zero (pay per request)
 MAX_INSTANCES="${MAX_INSTANCES:-5}"
 ALLOW_UNAUTH="${ALLOW_UNAUTH:-true}"       # true = public URL (simplest for dev)

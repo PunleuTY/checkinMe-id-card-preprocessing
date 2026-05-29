@@ -203,7 +203,7 @@ async def gemini_ocr_upload(
     file: UploadFile = File(...),
     model: str = Form(settings.gemini_model),
 ) -> GeminiOCRResponse:
-    from experiments.gemini.extractor import extract_from_bytes
+    from gemini.extractor import extract_from_bytes
 
     t0 = time.perf_counter()
     data = await file.read()
@@ -249,7 +249,7 @@ async def gemini_ocr_upload_annotated(
     Same as /gemini-ocr/upload but also returns the detected field regions and
     an annotated image (base64 JPEG) with colored bounding boxes drawn on it.
     """
-    from experiments.gemini.extractor import extract_with_regions_from_bytes
+    from gemini.extractor import extract_with_regions_from_bytes
 
     t0 = time.perf_counter()
     data = await file.read()
@@ -300,7 +300,7 @@ async def gemini_ocr_upload_processed(
     Returns the cleaned image (store this — no boxes) plus the annotated preview,
     fields, regions and timing. This is two Gemini calls.
     """
-    from experiments.gemini.extractor import process_card_from_bytes
+    from gemini.extractor import process_card_from_bytes
 
     t0 = time.perf_counter()
     data = await file.read()

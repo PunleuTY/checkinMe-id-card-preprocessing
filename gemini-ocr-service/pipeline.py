@@ -27,7 +27,7 @@ def main():
     )
     args = parser.parse_args()
 
-    from experiments.gemini.extractor import extract_from_file
+    from gemini.extractor import extract_from_file
 
     result = extract_from_file(args.image, model=args.model)
 

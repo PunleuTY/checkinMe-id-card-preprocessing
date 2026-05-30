@@ -1,0 +1,58 @@
+version: "3.7"
+
+networks:
+  checkinme:
+  appshare:
+    driver: bridge
+    name: api_appshare
+
+services:
+  app:
+    build:
+      args:
+        user: admin
+        uid: 1000
+      context: ./
+      dockerfile: Dockerfile
+    container_name: checkinme-api
+    restart: unless-stopped
+    working_dir: /var/www/
+    links:
+      - db
+    volumes:
+      - ./:/var/www
+    networks:
+      - checkinme
+      - appshare
+
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    container_name: checkinme-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./docker-compose/mysql:/docker-entrypoint-initdb.d
+    networks:
+      - checkinme
+
+  nginx:
+    image: nginx:1.26-alpine
+    container_name: checkinme-nginx
+    restart: unless-stopped
+    ports:
+      - 6061:80
+    volumes:
+      - ./:/var/www
+      - ./docker-compose/nginx:/etc/nginx/conf.d
+    networks:
+      - checkinme
+      - appshare

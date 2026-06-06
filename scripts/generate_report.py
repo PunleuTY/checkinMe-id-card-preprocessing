@@ -5,26 +5,18 @@ Produces a professional + technical report on the Gemini service used for Khmer
 NID card text detection & recognition, following the same content structure as
 `gemini-ocr-service-report.md`.
 
-Two modes:
-
-  1. Static (default) — writes the full report with the model-comparison table
-     left as fill-in placeholders. Works offline, no API key needed.
-
-  2. Benchmark (--benchmark) — runs the production extractor (`extract_from_bytes`)
-     over the images in `sample_imgs/` with BOTH gemini-2.5-flash and gemini-2.5-pro,
-     measures latency / JSON-validity / field-fill-rate, and injects the real
-     numbers into the §6 comparison table. Requires GEMINI_API_KEY.
+Writes the full report. Works offline, no API key needed.
 
 Output:
   - Markdown (always).
   - HTML (--html) — a styled, shareable document, if the `markdown` package is
     installed (pip install markdown).
+  - PDF (--pdf) — a print-ready document (needs pandoc + Chrome; renders Khmer).
 
 Usage:
   python -m scripts.generate_report
-  python -m scripts.generate_report --benchmark
-  python -m scripts.generate_report --benchmark --html -o reports/
-  python -m scripts.generate_report --benchmark --models gemini-2.5-flash gemini-2.5-pro
+  python -m scripts.generate_report --html -o reports/
+  python -m scripts.generate_report --pdf
 """
 
 from __future__ import annotations
@@ -457,11 +449,7 @@ apples-to-apples comparison of the model itself.
   resolving* — pick one default so local runs and deployed runs behave the same. (See
   [Section 7](#7-findings--recommendations).)
 
-### 6.3 Measured results from your test
-
-{comparison_table(results)}
-
-### 6.4 How to read the comparison
+### 6.3 How to read the comparison
 
 - **Flash** is the workhorse: fast, cheap, and good enough on the great majority of
   real submissions. For a user-facing flow where people wait for the result, the
@@ -473,7 +461,7 @@ apples-to-apples comparison of the model itself.
   between the two narrows on exactly the fields that matter most for identity. That
   strengthens the case for Flash as the default.
 
-### 6.5 Recommendation
+### 6.4 Recommendation
 
 - **Default to Gemini 2.5 Flash in production** (matches the existing deploy config):
   best balance of speed, cost, and accuracy for the typical card.
@@ -490,11 +478,9 @@ apples-to-apples comparison of the model itself.
 1. **Align the default model.** `app/core/config.py` defaults to `gemini-2.5-pro`,
    but `.env.example` and `deploy.sh` use `gemini-2.5-flash`. Make them consistent
    (recommend Flash) to avoid surprises between local and deployed runs.
-2. **Record the measured numbers** from your Flash-vs-Pro test into the table in
-   §6.3 so the recommendation is backed by data, not just defaults.
-3. **Consider an automatic Flash→Pro escalation** for low-confidence results, using
+2. **Consider an automatic Flash→Pro escalation** for low-confidence results, using
    the existing per-request `model` override.
-4. **Security:** the deploy currently allows unauthenticated access
+3. **Security:** the deploy currently allows unauthenticated access
    (`ALLOW_UNAUTH=true`) for dev simplicity. Before production, lock the Cloud Run
    service down (IAM / signed requests) since it processes personal ID data.
 

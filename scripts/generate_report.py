@@ -5,13 +5,22 @@ Produces a professional + technical report on the Gemini service used for Khmer
 NID card text detection & recognition, following the same content structure as
 `gemini-ocr-service-report.md`.
 
+The HTML and PDF use the same corporate layout as the CheckinMe AI-Profile
+report: navy cover page, table of contents, numbered sections with coloured
+headings, navy-header tables, callout boxes, and a running header/footer with
+page numbers. Khmer script renders correctly because rendering goes through
+WeasyPrint (HarfBuzz shaping), not ReportLab.
+
 Writes the full report. Works offline, no API key needed.
 
 Output:
   - Markdown (always).
-  - HTML (--html) — a styled, shareable document, if the `markdown` package is
-    installed (pip install markdown).
-  - PDF (--pdf) — a print-ready document (needs pandoc + Chrome; renders Khmer).
+  - HTML (--html) — the styled document as a single self-contained .html file.
+  - PDF  (--pdf)  — the print-ready styled document.
+
+Report tooling (only needed for --html / --pdf; not part of the service):
+  pip install weasyprint        # PDF/HTML rendering with Khmer shaping
+  brew install pango pandoc     # native libs + markdown→HTML conversion
 
 Usage:
   python -m scripts.generate_report
@@ -34,15 +43,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # ---------------------------------------------------------------------------
 
 def build_report() -> str:
-    generated = datetime.now().strftime("%Y-%m-%d")
-    return f"""# Gemini OCR Service — Khmer NID Card Text Detection & Recognition
-
-*Generated: {generated}*
+    return """# Gemini OCR Service — Khmer NID Card Text Detection & Recognition
 
 **Report scope:** the Gemini service only — the component that reads a Cambodian
 National ID (NID) card image and returns its data as structured fields, ready to be
 hosted and integrated with the CheckinMe AI server. It also compares the two Gemini
 models that were tested for this job: **Gemini 2.5 Flash** and **Gemini 2.5 Pro**.
+
+> This report intentionally covers *only* what lives in the Gemini service.
 
 ---
 
@@ -72,7 +80,7 @@ recommendation are in [Section 6](#6-model-comparison-gemini-25-flash-vs-25-pro)
 
 ## 2. What the service does
 
-```text
+```
   User photo of an ID card
             │
             ▼
@@ -138,9 +146,9 @@ OCR slips.
 ### The output contract (identical to CamDX)
 
 ```jsonc
-{{
+{
   "text":   "<full raw transcription>",
-  "fields": {{
+  "fields": {
     "idNumber":    "101325482",
     "lastNameKh":  "ជន",
     "firstNameKh": "ពេងហុង",
@@ -155,10 +163,10 @@ OCR slips.
     "MRZ1":        "IDKHM1013254824<<<<<<<<<<<<<<<",
     "MRZ2":        "0101170M2610139KHM<<<<<<<<<<<8",
     "MRZ3":        "CHORN<<PENGHONG<<<<<<<<<<<<<<<"
-  }},
+  },
   "model":  "gemini-2.5-flash",
-  "timing": {{ "total_ms": 0, "details": {{ "upload_read_ms": 0, "gemini_api_ms": 0 }} }}
-}}
+  "timing": { "total_ms": 0, "details": { "upload_read_ms": 0, "gemini_api_ms": 0 } }
+}
 ```
 
 ### The prompt — how Gemini is instructed
@@ -368,118 +376,224 @@ apples-to-apples comparison of the model itself.
 
 
 # ---------------------------------------------------------------------------
-# HTML rendering (optional, professional output)
+# Styled HTML + PDF rendering
+#
+# The report is rendered into the same professional layout as the CheckinMe
+# AI-Profile report: a navy cover page, a table of contents, numbered sections
+# with coloured headings, navy-header tables, callout boxes, and a running
+# header/footer with page numbers.
+#
+# Rendering uses WeasyPrint (CSS paged-media → PDF) rather than ReportLab,
+# because this report contains Khmer script: WeasyPrint shapes complex scripts
+# correctly (subscript consonants, dependent vowels) via HarfBuzz, while
+# ReportLab does not. The markdown body is converted to an HTML fragment with
+# pandoc, then wrapped in the styled template below.
 # ---------------------------------------------------------------------------
 
-_HTML_TEMPLATE = """<!DOCTYPE html>
+# Colour palette — mirrors the AI-Profile report.
+_NAVY = "#1E3A5F"
+_BLUE = "#2563EB"
+_GREEN = "#16A34A"
+_LIGHTGREY = "#F3F4F6"
+_MIDGREY = "#9CA3AF"
+_DARKGREY = "#1F2937"
+_RULE = "#E5E7EB"
+
+# Font stacks. Khmer Sangam MN is listed as a fallback so Khmer glyphs in body
+# text, tables, and code blocks render via per-glyph font fallback.
+_SANS = '"Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif'
+_MONO = 'Menlo, "Courier New", "Khmer Sangam MN", monospace'
+
+
+def _ensure_native_libs() -> None:
+    """Put Homebrew's lib dir on the loader path so WeasyPrint finds pango/glib."""
+    import os
+    for p in ("/opt/homebrew/lib", "/usr/local/lib"):
+        if os.path.isdir(p):
+            cur = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+            if p not in cur.split(os.pathsep):
+                os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = (
+                    p + (os.pathsep + cur if cur else "")
+                )
+
+
+def _parse_md(md_text: str) -> tuple[str, str, str, list[str]]:
+    """Split the report markdown into (title, lead paragraph, body, section titles)."""
+    lines = md_text.split("\n")
+    title = ""
+    title_idx = -1
+    body_idx = len(lines)
+    for i, ln in enumerate(lines):
+        if title_idx < 0 and ln.startswith("# "):
+            title, title_idx = ln[2:].strip(), i
+        elif ln.startswith("## "):
+            body_idx = i
+            break
+
+    # Lead = the prose between the title and the first section, minus blockquotes
+    # and horizontal rules.
+    lead_lines = [
+        ln for ln in lines[title_idx + 1:body_idx]
+        if ln.strip()
+        and not ln.lstrip().startswith(">")
+        and set(ln.strip()) != {"-"}
+    ]
+    lead = " ".join(lead_lines).replace("**", "").replace("*", "")
+
+    body_md = "\n".join(lines[body_idx:])
+    sections = [ln[3:].strip() for ln in lines if ln.startswith("## ")]
+    return title, lead, body_md, sections
+
+
+def _md_body_to_html(body_md: str) -> str:
+    """Convert the section markdown to an HTML fragment via pandoc (gfm → html5)."""
+    import subprocess
+    return subprocess.run(
+        ["pandoc", "--from", "gfm", "--to", "html5"],
+        input=body_md, capture_output=True, text=True, check=True,
+    ).stdout
+
+
+def _styled_html(md_text: str) -> str:
+    """Build the full, self-contained styled HTML document for the report."""
+    import html as _html
+
+    title, lead, body_md, sections = _parse_md(md_text)
+    main, _, sub = title.partition("—")
+    main, sub = (main.strip() or title), sub.strip()
+    today = datetime.now().strftime("%d %B %Y")
+    body_html = _md_body_to_html(body_md)
+
+    toc_rows = "\n".join(
+        f'<div class="toc-item"><span class="toc-num">{s.split(".", 1)[0]}.</span>'
+        f'{_html.escape(s.split(".", 1)[1].strip()) if "." in s else _html.escape(s)}</div>'
+        for s in sections
+    )
+
+    css = f"""
+@page {{
+  size: A4; margin: 22mm 20mm 18mm 20mm;
+  @top-left {{ content: "CheckinMe — Gemini OCR Service"; font: 7.5pt {_SANS}; color: {_MIDGREY}; }}
+  @top-right {{ content: "Khmer NID Card OCR Report"; font: 7.5pt {_SANS}; color: {_MIDGREY}; }}
+  @bottom-left {{ content: "{today}"; font: 7.5pt {_SANS}; color: {_MIDGREY}; }}
+  @bottom-right {{ content: "Page " counter(page); font: 7.5pt {_SANS}; color: {_MIDGREY}; }}
+}}
+@page:first {{
+  @top-left {{ content: ""; }} @top-right {{ content: ""; }}
+  @bottom-left {{ content: ""; }} @bottom-right {{ content: ""; }}
+}}
+html {{ font-family: {_SANS}; font-size: 9.5pt; line-height: 1.5; color: {_DARKGREY}; }}
+body {{ margin: 0; }}
+
+/* ---- Cover ---- */
+.cover {{ break-after: page; }}
+.cover-block {{ background: {_NAVY}; color: #fff; padding: 34px 26px 30px; }}
+.cover-title {{ font-size: 26pt; font-weight: bold; line-height: 1.12; margin: 0; }}
+.cover-subtitle {{ font-size: 13pt; color: #CBD5E1; margin-top: 8px; }}
+.cover-meta {{ font-size: 9pt; color: #94A3B8; margin-top: 5px; }}
+.cover-meta:first-of-type {{ margin-top: 18px; }}
+.cover-accent {{ height: 6px; background: {_GREEN}; }}
+.cover-intro {{ margin-top: 18px; }}
+
+/* ---- Table of contents ---- */
+.toc {{ break-after: page; }}
+.toc-item {{ font-size: 10pt; padding: 3px 0; color: {_DARKGREY}; }}
+.toc-num {{ font-weight: bold; display: inline-block; min-width: 22px; }}
+
+/* ---- Section headings ---- */
+h1.section, h2 {{
+  font-size: 15pt; font-weight: bold; color: {_NAVY};
+  border-top: 2px solid {_NAVY}; padding-top: 8px; margin: 0 0 8px;
+  break-before: page; break-after: avoid;
+}}
+.toc h1.section {{ break-before: auto; }}
+h3 {{ font-size: 11.5pt; font-weight: bold; color: {_BLUE}; margin: 16px 0 4px; break-after: avoid; }}
+h4 {{ font-size: 10pt; font-weight: bold; font-style: italic; color: {_DARKGREY}; margin: 12px 0 3px; }}
+p {{ margin: 6px 0; text-align: justify; }}
+ul, ol {{ margin: 6px 0 8px; padding-left: 20px; }}
+li {{ margin: 3px 0; }}
+strong {{ color: {_DARKGREY}; }}
+hr {{ display: none; }}
+
+/* ---- Tables ---- */
+table {{ border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 8.5pt; break-inside: avoid; }}
+th {{ background: {_NAVY}; color: #fff; font-weight: bold; text-align: left;
+     padding: 6px 8px; border: 0.4pt solid #D1D5DB; }}
+td {{ padding: 6px 8px; border: 0.4pt solid #D1D5DB; vertical-align: top; }}
+tbody tr:nth-child(odd) {{ background: {_LIGHTGREY}; }}
+
+/* ---- Code / pre ---- */
+pre {{ background: #F9FAFB; border: 0.5pt solid {_RULE}; border-radius: 4px;
+      padding: 9px 11px; font-family: {_MONO}; font-size: 7.8pt; line-height: 1.4;
+      color: #374151; white-space: pre-wrap; word-break: break-word; }}
+code {{ font-family: {_MONO}; font-size: 0.9em; background: {_LIGHTGREY};
+       padding: 0 3px; border-radius: 3px; color: #374151; }}
+pre code {{ background: none; padding: 0; }}
+
+/* ---- Callout boxes (markdown blockquotes) ---- */
+blockquote {{ background: {_LIGHTGREY}; border-left: 3px solid {_BLUE};
+             margin: 10px 0; padding: 8px 12px; color: #374151; font-size: 9pt;
+             break-inside: avoid; }}
+blockquote p {{ margin: 2px 0; text-align: left; }}
+em {{ color: #555; }}
+"""
+
+    return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gemini OCR Service — Report</title>
-<style>
-  body {{ font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
-    max-width: 860px; margin: 40px auto; padding: 0 24px; line-height: 1.65;
-    color: #1a1a1a; }}
-  h1 {{ font-size: 28px; border-bottom: 3px solid #3b6ef5; padding-bottom: 10px; }}
-  h2 {{ font-size: 22px; margin-top: 40px; border-bottom: 1px solid #e2e2e2;
-    padding-bottom: 6px; }}
-  h3 {{ font-size: 17px; margin-top: 28px; color: #2c3e50; }}
-  code {{ background: #f4f4f6; padding: 1px 5px; border-radius: 4px;
-    font-size: 0.9em; }}
-  pre {{ background: #1e2130; color: #e0e0e0; padding: 16px; border-radius: 8px;
-    overflow-x: auto; font-size: 13px; line-height: 1.45; }}
-  pre code {{ background: none; padding: 0; color: inherit; }}
-  table {{ border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }}
-  th, td {{ border: 1px solid #ddd; padding: 8px 10px; text-align: left;
-    vertical-align: top; }}
-  th {{ background: #f4f6fb; }}
-  blockquote {{ border-left: 4px solid #3b6ef5; margin: 16px 0; padding: 8px 16px;
-    background: #f6f8fd; color: #444; }}
-  hr {{ border: none; border-top: 1px solid #e2e2e2; margin: 32px 0; }}
-  em {{ color: #555; }}
-</style>
+<title>{_html.escape(title)}</title>
+<style>{css}</style>
 </head>
 <body>
-{body}
+<section class="cover">
+  <div class="cover-block">
+    <div class="cover-title">{_html.escape(main)}</div>
+    <div class="cover-subtitle">{_html.escape(sub)}</div>
+    <div class="cover-meta">Project: CheckinMe</div>
+    <div class="cover-meta">Production model: Google Gemini 2.5 Flash</div>
+    <div class="cover-meta">Scope: Detection, recognition, field extraction, hosting &amp; model comparison</div>
+    <div class="cover-meta">Date: {today}</div>
+  </div>
+  <div class="cover-accent"></div>
+  <blockquote class="cover-intro">{_html.escape(lead)}</blockquote>
+</section>
+<section class="toc">
+  <h1 class="section">Table of Contents</h1>
+  {toc_rows}
+</section>
+{body_html}
 </body>
 </html>"""
 
 
-def render_html(md_text: str) -> str | None:
-    """Convert the markdown report to a styled HTML doc. Needs the `markdown` pkg."""
-    try:
-        import markdown
-    except ImportError:
-        return None
-    body = markdown.markdown(
-        md_text, extensions=["tables", "fenced_code", "toc"]
-    )
-    return _HTML_TEMPLATE.format(body=body)
+def render_html(md_text: str) -> str:
+    """Return the full styled HTML document for the report."""
+    return _styled_html(md_text)
 
 
-# ---------------------------------------------------------------------------
-# PDF rendering (pandoc -> HTML -> Chrome headless; embeds Khmer text)
-# ---------------------------------------------------------------------------
-
-_STYLE_HEADER = Path(__file__).resolve().parent / "report_style.html"
-
-_CHROME_CANDIDATES = [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "google-chrome",
-    "chromium",
-    "chromium-browser",
-]
-
-
-def _find_chrome() -> str | None:
-    import shutil
-    for c in _CHROME_CANDIDATES:
-        if Path(c).exists() or shutil.which(c):
-            return c
-    return None
-
-
-def render_pdf(md_path: Path, pdf_path: Path) -> bool:
+def render_pdf(md_text: str, pdf_path: Path) -> bool:
     """
-    Convert the markdown report to PDF: pandoc builds styled HTML (with a
-    Khmer-capable font stack from report_style.html), then headless Chrome
-    prints it to PDF so Khmer Unicode renders as real, selectable text.
+    Render the report to a styled PDF via WeasyPrint (correct Khmer shaping +
+    running header/footer with page numbers). Requires pandoc and WeasyPrint.
 
     Returns True on success, False (with a stderr hint) if a tool is missing.
     """
     import shutil
-    import subprocess
-    import tempfile
 
     if not shutil.which("pandoc"):
         print("PDF skipped — pandoc not found (brew install pandoc).", file=sys.stderr)
         return False
-    chrome = _find_chrome()
-    if not chrome:
-        print("PDF skipped — no Chrome/Chromium/Edge found for HTML→PDF.", file=sys.stderr)
+
+    _ensure_native_libs()
+    try:
+        from weasyprint import HTML
+    except Exception as e:  # noqa: BLE001 — missing lib or package
+        print(f"PDF skipped — WeasyPrint unavailable: {e}", file=sys.stderr)
+        print("  Install with: pip install weasyprint  (and: brew install pango)", file=sys.stderr)
         return False
 
-    with tempfile.TemporaryDirectory() as tmp:
-        html_path = Path(tmp) / "report.html"
-        cmd = [
-            "pandoc", str(md_path), "-s", "--from", "gfm", "--to", "html5",
-            "--metadata", "title=Gemini OCR Service — Report",
-            "-o", str(html_path),
-        ]
-        if _STYLE_HEADER.exists():
-            cmd += ["--include-in-header", str(_STYLE_HEADER)]
-        subprocess.run(cmd, check=True)
-        subprocess.run(
-            [
-                chrome, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                f"--print-to-pdf={pdf_path}", html_path.as_uri(),
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+    HTML(string=_styled_html(md_text)).write_pdf(str(pdf_path))
     return pdf_path.exists()
 
 
@@ -492,7 +606,7 @@ def main() -> int:
     parser.add_argument("--html", action="store_true", help="Also emit a styled HTML file")
     parser.add_argument(
         "--pdf", action="store_true",
-        help="Also emit a print-ready PDF (needs pandoc + Chrome; renders Khmer)",
+        help="Also emit a print-ready PDF (needs pandoc + WeasyPrint; renders Khmer)",
     )
     parser.add_argument(
         "-o", "--out", default=str(REPO_ROOT),
@@ -513,20 +627,13 @@ def main() -> int:
     print(f"Wrote {md_path}")
 
     if args.html:
-        html = render_html(report_md)
-        if html is None:
-            print(
-                "HTML skipped — install the renderer: pip install markdown",
-                file=sys.stderr,
-            )
-        else:
-            html_path = out_dir / f"{args.name}.html"
-            html_path.write_text(html, encoding="utf-8")
-            print(f"Wrote {html_path}")
+        html_path = out_dir / f"{args.name}.html"
+        html_path.write_text(render_html(report_md), encoding="utf-8")
+        print(f"Wrote {html_path}")
 
     if args.pdf:
         pdf_path = out_dir / f"{args.name}.pdf"
-        if render_pdf(md_path, pdf_path):
+        if render_pdf(report_md, pdf_path):
             print(f"Wrote {pdf_path}")
 
     return 0

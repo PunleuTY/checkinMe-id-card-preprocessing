@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gemini OCR Service — Khmer NID Card Text Detection &amp; Recognition</title>
+<style>
+@page {
+  size: A4; margin: 22mm 20mm 18mm 20mm;
+  @top-left { content: "CheckinMe — Gemini OCR Service"; font: 7.5pt "Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif; color: #9CA3AF; }
+  @top-right { content: "Khmer NID Card OCR Report"; font: 7.5pt "Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif; color: #9CA3AF; }
+  @bottom-left { content: "06 June 2026"; font: 7.5pt "Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif; color: #9CA3AF; }
+  @bottom-right { content: "Page " counter(page); font: 7.5pt "Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif; color: #9CA3AF; }
+}
+@page:first {
+  @top-left { content: ""; } @top-right { content: ""; }
+  @bottom-left { content: ""; } @bottom-right { content: ""; }
+}
+html { font-family: "Helvetica Neue", Helvetica, Arial, "Khmer Sangam MN", sans-serif; font-size: 9.5pt; line-height: 1.5; color: #1F2937; }
+body { margin: 0; }
+
+/* ---- Cover ---- */
+.cover { break-after: page; }
+.cover-block { background: #1E3A5F; color: #fff; padding: 34px 26px 30px; }
+.cover-title { font-size: 26pt; font-weight: bold; line-height: 1.12; margin: 0; }
+.cover-subtitle { font-size: 13pt; color: #CBD5E1; margin-top: 8px; }
+.cover-meta { font-size: 9pt; color: #94A3B8; margin-top: 5px; }
+.cover-meta:first-of-type { margin-top: 18px; }
+.cover-accent { height: 6px; background: #16A34A; }
+.cover-intro { margin-top: 18px; }
+
+/* ---- Table of contents ---- */
+.toc { break-after: page; }
+.toc-item { font-size: 10pt; padding: 3px 0; color: #1F2937; }
+.toc-num { font-weight: bold; display: inline-block; min-width: 22px; }
+
+/* ---- Section headings ---- */
+h1.section, h2 {
+  font-size: 15pt; font-weight: bold; color: #1E3A5F;
+  border-top: 2px solid #1E3A5F; padding-top: 8px; margin: 0 0 8px;
+  break-before: page; break-after: avoid;
+}
+.toc h1.section { break-before: auto; }
+h3 { font-size: 11.5pt; font-weight: bold; color: #2563EB; margin: 16px 0 4px; break-after: avoid; }
+h4 { font-size: 10pt; font-weight: bold; font-style: italic; color: #1F2937; margin: 12px 0 3px; }
+p { margin: 6px 0; text-align: justify; }
+ul, ol { margin: 6px 0 8px; padding-left: 20px; }
+li { margin: 3px 0; }
+strong { color: #1F2937; }
+hr { display: none; }
+
+/* ---- Tables ---- */
+table { border-collapse: collapse; width: 100%; margin: 10px 0 14px; font-size: 8.5pt; break-inside: avoid; }
+th { background: #1E3A5F; color: #fff; font-weight: bold; text-align: left;
+     padding: 6px 8px; border: 0.4pt solid #D1D5DB; }
+td { padding: 6px 8px; border: 0.4pt solid #D1D5DB; vertical-align: top; }
+tbody tr:nth-child(odd) { background: #F3F4F6; }
+
+/* ---- Code / pre ---- */
+pre { background: #F9FAFB; border: 0.5pt solid #E5E7EB; border-radius: 4px;
+      padding: 9px 11px; font-family: Menlo, "Courier New", "Khmer Sangam MN", monospace; font-size: 7.8pt; line-height: 1.4;
+      color: #374151; white-space: pre-wrap; word-break: break-word; }
+code { font-family: Menlo, "Courier New", "Khmer Sangam MN", monospace; font-size: 0.9em; background: #F3F4F6;
+       padding: 0 3px; border-radius: 3px; color: #374151; }
+pre code { background: none; padding: 0; }
+
+/* ---- Callout boxes (markdown blockquotes) ---- */
+blockquote { background: #F3F4F6; border-left: 3px solid #2563EB;
+             margin: 10px 0; padding: 8px 12px; color: #374151; font-size: 9pt;
+             break-inside: avoid; }
+blockquote p { margin: 2px 0; text-align: left; }
+em { color: #555; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="cover-block">
+    <div class="cover-title">Gemini OCR Service</div>
+    <div class="cover-subtitle">Khmer NID Card Text Detection &amp; Recognition</div>
+    <div class="cover-meta">Project: CheckinMe</div>
+    <div class="cover-meta">Production model: Google Gemini 2.5 Flash</div>
+    <div class="cover-meta">Scope: Detection, recognition, field extraction, hosting &amp; model comparison</div>
+    <div class="cover-meta">Date: 06 June 2026</div>
+  </div>
+  <div class="cover-accent"></div>
+  <blockquote class="cover-intro">Report scope: the Gemini service only — the component that reads a Cambodian National ID (NID) card image and returns its data as structured fields, ready to be hosted and integrated with the CheckinMe AI server. It also compares the two Gemini models that were tested for this job: Gemini 2.5 Flash and Gemini 2.5 Pro.</blockquote>
+</section>
+<section class="toc">
+  <h1 class="section">Table of Contents</h1>
+  <div class="toc-item"><span class="toc-num">1.</span>Executive summary</div>
+<div class="toc-item"><span class="toc-num">2.</span>What the service does</div>
+<div class="toc-item"><span class="toc-num">3.</span>How it works</div>
+<div class="toc-item"><span class="toc-num">4.</span>The production endpoint</div>
+<div class="toc-item"><span class="toc-num">5.</span>Hosting &amp; integration</div>
+<div class="toc-item"><span class="toc-num">6.</span>Model comparison: Gemini 2.5 Flash vs 2.5 Pro</div>
+<div class="toc-item"><span class="toc-num">7.</span>Findings &amp; recommendations</div>
+<div class="toc-item"><span class="toc-num">8.</span>Glossary</div>
+</section>
+<h2 id="1-executive-summary">1. Executive summary</h2>
+<p>The CheckinMe app lets a user photograph their ID card. We need to turn that photo into clean, structured data — name, ID number, date of birth, gender, address, and so on — automatically.</p>
+<p>Previously this was done with a separate OCR service (CamDX). This service <strong>replaces that</strong> with Google's <strong>Gemini</strong> AI vision model. A user uploads a raw card photo; the service sends it to Gemini, which both <strong>reads</strong> the text on the card (Khmer + English) and <strong>organises</strong> it into the exact fields the CheckinMe backend already expects.</p>
+<p>Two key points worth keeping in mind:</p>
+<ul>
+<li><strong>It is a drop-in replacement.</strong> The data shape it returns is identical to the old service, so the rest of the CheckinMe system does not need to change.</li>
+<li><strong>It is "stateless."</strong> It does not keep a database or remember anything between requests. One photo in, one set of fields out.</li>
+</ul>
+<p>We tested two versions of the AI model — <strong>Flash</strong> (faster, cheaper) and <strong>Pro</strong> (slower, more accurate) — to decide which to run in production. The comparison and recommendation are in <a href="#6-model-comparison-gemini-25-flash-vs-25-pro">Section 6</a>.</p>
+<hr />
+<h2 id="2-what-the-service-does">2. What the service does</h2>
+<pre><code>  User photo of an ID card
+            │
+            ▼
+   ┌─────────────────────────────┐
+   │  Gemini OCR service         │
+   │  (FastAPI, one HTTP call)   │
+   │                             │
+   │  Stage 1: read all text     │  ← Gemini &quot;sees&quot; the card
+   │  Stage 2: extract fields    │  ← organise into named fields
+   │  Stage 2b: MRZ double-check │  ← verify key fields mathematically
+   └─────────────────────────────┘
+            │
+            ▼
+   Structured JSON fields  →  CheckinMe backend</code></pre>
+<p>The whole thing is <strong>one call to Gemini</strong> plus a small amount of local logic to verify the result. There is no local image cleanup on the production path — Gemini itself handles rotated, skewed, glare-affected, or low-resolution photos.</p>
+<hr />
+<h2 id="3-how-it-works">3. How it works</h2>
+<h3 id="stage-1--text-detection--recognition">Stage 1 — Text detection &amp; recognition</h3>
+<p>The raw image bytes are sent straight to Gemini together with a specialised prompt (<code>PROMPT</code> in <code>gemini/extractor.py</code>). The prompt tells Gemini:</p>
+<ul>
+<li>This is a Cambodian NID card with <strong>both Khmer script and Latin/English</strong> text.</li>
+<li>The photo may be rotated, skewed, low-res, or have glare/shadows — read it anyway.</li>
+<li>Exactly which fields the card contains, with the Khmer field labels for each (e.g. <code>កាលបរិច្ឆេទចេញ</code> = issue date), and how the three <strong>MRZ</strong> lines (the machine-readable zone at the bottom) are structured.</li>
+</ul>
+<p>Gemini returns a <code>text</code> value: a full raw transcription of every visible character.</p>
+<h3 id="stage-2--field-extraction">Stage 2 — Field extraction</h3>
+<p>The <strong>same</strong> Gemini call also returns a structured <code>fields</code> object. The prompt forces a strict contract:</p>
+<ul>
+<li>Return <strong>only valid JSON</strong>, no markdown, exactly the agreed keys.</li>
+<li>Use <code>null</code> for anything that can't be read with confidence — <strong>never guess</strong>.</li>
+<li>Dates as <code>DD/MM/YYYY</code>, gender exactly <code>M</code>/<code>F</code>, English names UPPERCASE, Khmer preserved verbatim (no transliteration).</li>
+<li><code>temperature=0</code> and <code>response_mime_type="application/json"</code> are set on the API call so output is deterministic and machine-parseable.</li>
+</ul>
+<h3 id="stage-2b--mrz-verification-the-reliability-trick">Stage 2b — MRZ verification (the reliability trick)</h3>
+<p>The MRZ lines at the bottom of the card follow a fixed international format, so they can be parsed <strong>mathematically</strong> rather than trusting the AI's reading. <code>_parse_mrz()</code> decodes MRZ2 and MRZ3 to recover:</p>
+<ul>
+<li><code>dob</code>, <code>gender</code>, <code>expiredDate</code> (from MRZ2)</li>
+<li><code>lastNameEn</code>, <code>firstNameEn</code> (from MRZ3)</li>
+</ul>
+<p>These deterministic values <strong>backfill or override</strong> the vision-read fields when they disagree. This is what makes the key identity fields trustworthy even if the visual OCR slips.</p>
+<h3 id="the-output-contract-identical-to-camdx">The output contract (identical to CamDX)</h3>
+<pre class="jsonc"><code>{
+  &quot;text&quot;:   &quot;&lt;full raw transcription&gt;&quot;,
+  &quot;fields&quot;: {
+    &quot;idNumber&quot;:    &quot;101325482&quot;,
+    &quot;lastNameKh&quot;:  &quot;ជន&quot;,
+    &quot;firstNameKh&quot;: &quot;ពេងហុង&quot;,
+    &quot;dob&quot;:         &quot;17/01/2001&quot;,
+    &quot;gender&quot;:      &quot;M&quot;,
+    &quot;lastNameEn&quot;:  &quot;CHORN&quot;,
+    &quot;firstNameEn&quot;: &quot;PENGHONG&quot;,
+    &quot;expiredDate&quot;: &quot;18/01/2030&quot;,
+    &quot;issuedDate&quot;:  &quot;18/01/2020&quot;,
+    &quot;address&quot;:     &quot;ភូមិកាច់ត្រក ឃុំលាយបូរ ស្រុកត្រាំកក់ តាកែវ&quot;,
+    &quot;pob&quot;:         &quot;ឃុំលាយបូរ ស្រុកត្រាំកក់ តាកែវ&quot;,
+    &quot;MRZ1&quot;:        &quot;IDKHM1013254824&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&quot;,
+    &quot;MRZ2&quot;:        &quot;0101170M2610139KHM&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;8&quot;,
+    &quot;MRZ3&quot;:        &quot;CHORN&lt;&lt;PENGHONG&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&quot;
+  },
+  &quot;model&quot;:  &quot;gemini-2.5-flash&quot;,
+  &quot;timing&quot;: { &quot;total_ms&quot;: 0, &quot;details&quot;: { &quot;upload_read_ms&quot;: 0, &quot;gemini_api_ms&quot;: 0 } }
+}</code></pre>
+<h3 id="the-prompt--how-gemini-is-instructed">The prompt — how Gemini is instructed</h3>
+<p>The service has no machine-learning model of its own to train. Its behaviour is controlled almost entirely by the <strong>prompt</strong> — the written set of instructions sent to Gemini alongside the image. The prompt <em>is</em> the configuration: it defines the task, the output shape, and the rules. The production path uses a single prompt, <code>PROMPT</code>, in <code>gemini/extractor.py</code>.</p>
+<p>The prompt is structured in four parts:</p>
+<ol type="1">
+<li><p><strong>Role &amp; context.</strong> It tells Gemini it is "an OCR system specialised in Cambodian National ID cards," that the card carries <strong>both Khmer script and Latin/English</strong>, and that the photo may be rotated, skewed, low-resolution, or affected by glare, shadows, or background clutter — <em>"Read the card regardless."</em> This primes the model to handle messy real-world photos instead of expecting a clean scan.</p></li>
+<li><p><strong>A description of the card's layout.</strong> It enumerates every field the card contains and pairs each with its Khmer label so the model knows where to look — e.g. the 9-digit ID number at the top, name in Khmer (<code>ឈ្មោះជាអក្សរខ្មែរ</code>), date of birth, gender, place of birth (<code>ទីកន្លែងកំណើត</code>), address (<code>អាស័យដ្ឋានបច្ចុប្បន្ន</code>), issue date (<code>កាលបរិច្ឆេទចេញ</code>), expiry date (<code>កាលបរិច្ឆេទផុតកំណត់</code>), and the three <strong>MRZ</strong> lines — including the exact internal format of each MRZ line.</p></li>
+<li><p><strong>The exact output schema.</strong> It shows Gemini the precise JSON skeleton to return — a <code>text</code> field plus a <code>fields</code> object with exactly the agreed keys (<code>idNumber</code>, <code>lastNameKh</code>, <code>firstNameKh</code>, <code>dob</code>, <code>gender</code>, <code>lastNameEn</code>, <code>firstNameEn</code>, <code>expiredDate</code>, <code>issuedDate</code>, <code>address</code>, <code>pob</code>, <code>MRZ1</code>, <code>MRZ2</code>, <code>MRZ3</code>) — and <em>no extra keys, no markdown fences</em>. This is what keeps the output a true drop-in replacement for CamDX.</p></li>
+<li><p><strong>Strict rules.</strong> The closing rules remove ambiguity and prevent the model from inventing data:</p>
+<ul>
+<li>Use <code>null</code> for anything that can't be read with confidence — <strong>never guess</strong>.</li>
+<li>Dates must be <code>DD/MM/YYYY</code> exactly as printed.</li>
+<li><code>gender</code> must be exactly <code>"M"</code> or <code>"F"</code>.</li>
+<li>English name fields must be UPPERCASE; Khmer must be preserved verbatim — <strong>no transliteration</strong>.</li>
+<li>For MRZ lines, copy every character exactly, including all <code>&lt;</code> padding; valid MRZ characters are only <code>A–Z</code>, <code>0–9</code>, and <code>&lt;</code>.</li>
+</ul></li>
+</ol>
+<p>The prompt works together with two API settings that make the output reliable: <code>temperature=0</code> (deterministic — the same card gives the same answer) and <code>response_mime_type="application/json"</code> (the model returns parseable JSON, not prose).</p>
+<blockquote>
+<p><strong>Other prompts in the file, not on the production path:</strong> <code>PROMPT_WITH_REGIONS</code> (same task plus bounding-box coordinates for each field), <code>PROMPT_DETECT_CARD</code> (asks only for the card's four corners, used by the de-skew stage), and <code>PROMPT_V1</code> (an earlier draft, kept for reference). These belong to the disabled image-cleanup / annotation modes and can be promoted back if those features are revived.</p>
+</blockquote>
+<h3 id="key-code-map">Key code map</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Symbol (<code>gemini/extractor.py</code>)</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>PROMPT</code></td>
+<td>Detection + recognition + field-extraction instructions</td>
+</tr>
+<tr class="even">
+<td><code>extract_from_bytes()</code></td>
+<td><strong>Production entrypoint</strong> — Stage 1 + Stage 2 in one Gemini call</td>
+</tr>
+<tr class="odd">
+<td><code>extract_from_file()</code></td>
+<td>Same, from a file path (CLI/testing)</td>
+</tr>
+<tr class="even">
+<td><code>_parse_mrz()</code></td>
+<td>Deterministic MRZ2/MRZ3 parse → field corrections</td>
+</tr>
+<tr class="odd">
+<td><code>_yymmdd_to_ddmmyyyy()</code></td>
+<td>MRZ date <code>YYMMDD</code> → <code>DD/MM/YYYY</code></td>
+</tr>
+<tr class="even">
+<td><code>_parse_json()</code></td>
+<td>Tolerant JSON parse (strips stray markdown fences)</td>
+</tr>
+<tr class="odd">
+<td><code>_sniff_mime()</code></td>
+<td>Detect JPEG/PNG/WebP from magic bytes</td>
+</tr>
+<tr class="even">
+<td><code>_build_client()</code></td>
+<td>Build <code>google.genai.Client</code> from API key / env</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Present but not on the production path</strong> (kept for future use): card-corner detection + de-skew (<code>preprocess_card_from_bytes</code>), bounding-box annotation (<code>annotate_image</code>, <code>extract_with_regions_from_bytes</code>), the 2-call orchestrator (<code>process_card_from_bytes</code>), and the quality gate / image-save logic. Their HTTP routes are disabled. They can be promoted back if cleaned/annotated images are needed later.</p>
+</blockquote>
+<hr />
+<h2 id="4-the-production-endpoint">4. The production endpoint</h2>
+<table>
+<thead>
+<tr class="header">
+<th>Method</th>
+<th>Path</th>
+<th>Gemini calls</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>POST</code></td>
+<td><code>/gemini-ocr/upload</code></td>
+<td>1</td>
+<td><strong>Production — CamDX replacement</strong></td>
+</tr>
+<tr class="even">
+<td><code>GET</code></td>
+<td><code>/health</code></td>
+<td>—</td>
+<td>Liveness check</td>
+</tr>
+</tbody>
+</table>
+<p><code>POST /gemini-ocr/upload</code> takes a <code>multipart/form-data</code> upload: <code>file=&lt;image&gt;</code>, optional <code>model=&lt;gemini-model&gt;</code>. The Gemini call runs in a thread pool (<code>run_in_threadpool</code>) so the async server stays responsive while waiting on the API. Errors map cleanly to HTTP: <code>500</code> if the SDK is missing, <code>502</code> on a Gemini failure.</p>
+<p>The disabled routes (<code>/upload/annotated</code>, <code>/upload/processed</code>, <code>/preview</code>) belong to the richer image-cleanup mode and are deliberately not registered for this phase.</p>
+<hr />
+<h2 id="5-hosting--integration">5. Hosting &amp; integration</h2>
+<h3 id="hosting-google-cloud-run">Hosting (Google Cloud Run)</h3>
+<ul>
+<li>Containerised via <code>Dockerfile</code> (Python 3.12-slim) and served by <strong>gunicorn + uvicorn worker</strong>: <code>--workers 1 --threads 8 --timeout 300</code>. One worker with threads is the right shape because the work is <strong>I/O-bound</strong> (waiting on the Gemini API), not CPU-bound.</li>
+<li><code>--timeout 300</code> is deliberately larger than the Laravel caller's timeout so a slow <strong>Pro</strong> call doesn't get killed mid-request.</li>
+<li><code>deploy/deploy.sh</code> deploys to Cloud Run from source. Defaults: region <code>asia-southeast1</code> (Singapore, closest to Cambodia), <code>1 CPU / 1Gi</code>, concurrency 8, scale-to-zero (<code>min-instances 0</code>, pay per request), max 5 instances.</li>
+<li>The <strong>Gemini API key lives in Secret Manager</strong>, never baked into the image; the model is passed as an env var (<code>GEMINI_MODEL</code>).</li>
+</ul>
+<h3 id="integration-with-the-checkinme-ai-server">Integration with the CheckinMe AI server</h3>
+<p>The Laravel backend's <code>GeminiService::scanNid()</code>:</p>
+<ol type="1">
+<li>Stores the <strong>original</strong> uploaded image (no cleaned/annotated variants this phase).</li>
+<li>Opens a <code>GeminiResult</code> audit row, <code>POST</code>s the image to <code>/gemini-ocr/upload</code>.</li>
+<li>Records <code>status_code</code> + <code>response_data</code> (small — just <code>text</code>, <code>fields</code>, <code>model</code>, <code>timing</code>; no base64 image blobs).</li>
+<li>Returns <code>$json['fields']</code>, which <code>GeminiPersonalInfoController::readIdCard()</code> maps to the personal-info response exactly as it did for CamDX.</li>
+</ol>
+<p>Laravel config (<code>config/gemini.php</code> / <code>.env</code>):</p>
+<pre class="text"><code>GEMINI_SERVICE_BASE_URL=&lt;cloud-run-url&gt;
+GEMINI_SERVICE_TIMEOUT=60
+GEMINI_SERVICE_MODEL=gemini-2.5-flash
+GEMINI_SERVICE_ENDPOINTS_SCAN_NID=/gemini-ocr/upload</code></pre>
+<hr />
+<h2 id="6-model-comparison-gemini-25-flash-vs-25-pro">6. Model comparison: Gemini 2.5 Flash vs 2.5 Pro</h2>
+<p>Both models run through the <strong>exact same</strong> code and prompt; only the model name changes (<code>GEMINI_MODEL</code>, or the <code>model</code> form field per request). So this is a clean apples-to-apples comparison of the model itself.</p>
+<h3 id="61-what-each-model-is-for">6.1 What each model is for</h3>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th><strong>Gemini 2.5 Flash</strong></th>
+<th><strong>Gemini 2.5 Pro</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Designed for</td>
+<td>Speed &amp; cost at scale</td>
+<td>Maximum accuracy / hard reasoning</td>
+</tr>
+<tr class="even">
+<td>Latency</td>
+<td>Lower (faster response)</td>
+<td>Higher (noticeably slower)</td>
+</tr>
+<tr class="odd">
+<td>Cost per call</td>
+<td>Cheaper</td>
+<td>More expensive</td>
+</tr>
+<tr class="even">
+<td>Best on</td>
+<td>Clear, well-lit cards</td>
+<td>Difficult cards: glare, skew, low-res, messy Khmer</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-evidence-already-baked-into-the-codebase">6.2 Evidence already baked into the codebase</h3>
+<ul>
+<li><strong>The deployment defaults to Flash.</strong> <code>.env.example</code>, <code>deploy.sh</code> (<code>GEMINI_MODEL=gemini-2.5-flash</code>), and the architecture doc all default to Flash — i.e. Flash was chosen as the day-to-day production model.</li>
+<li><strong>The timeouts were tuned around Pro being slow.</strong> Both the Docker <code>--timeout 300</code> and <code>deploy.sh</code> comments explicitly call out that the long timeout exists so that "slow gemini-2.5-pro calls" survive. This is direct evidence that <strong>Pro is materially slower</strong> in practice.</li>
+<li><strong><code>config.py</code> currently sets <code>gemini_model = "gemini-2.5-pro"</code> as the in-code default</strong>, while the deploy/env files set Flash. ⚠️ <em>This is an inconsistency worth resolving</em> — pick one default so local runs and deployed runs behave the same. (See <a href="#7-findings--recommendations">Section 7</a>.)</li>
+</ul>
+<h3 id="63-how-to-read-the-comparison">6.3 How to read the comparison</h3>
+<ul>
+<li><strong>Flash</strong> is the workhorse: fast, cheap, and good enough on the great majority of real submissions. For a user-facing flow where people wait for the result, the lower latency matters a lot.</li>
+<li><strong>Pro</strong> earns its keep on the hard cases — poor lighting, heavy skew, faint or unusual Khmer text — where it tends to read more correctly, at the cost of speed and money.</li>
+<li>Because the <strong>most sensitive fields are MRZ-verified in code</strong>, the accuracy gap between the two narrows on exactly the fields that matter most for identity. That strengthens the case for Flash as the default.</li>
+</ul>
+<h3 id="64-recommendation">6.4 Recommendation</h3>
+<ul>
+<li><strong>Default to Gemini 2.5 Flash in production</strong> (matches the existing deploy config): best balance of speed, cost, and accuracy for the typical card.</li>
+<li><strong>Keep Pro available as a fallback / escalation.</strong> The <code>model</code> form field already lets the caller pick per request — so a card that fails the quality checks on Flash could be retried on Pro.</li>
+<li><strong>Resolve the default-model inconsistency</strong> between <code>config.py</code> (Pro) and the deploy files (Flash) so behaviour is predictable everywhere.</li>
+</ul>
+<hr />
+<h2 id="7-findings--recommendations">7. Findings &amp; recommendations</h2>
+<ol type="1">
+<li><strong>Align the default model.</strong> <code>app/core/config.py</code> defaults to <code>gemini-2.5-pro</code>, but <code>.env.example</code> and <code>deploy.sh</code> use <code>gemini-2.5-flash</code>. Make them consistent (recommend Flash) to avoid surprises between local and deployed runs.</li>
+<li><strong>Consider an automatic Flash→Pro escalation</strong> for low-confidence results, using the existing per-request <code>model</code> override.</li>
+<li><strong>Security:</strong> the deploy currently allows unauthenticated access (<code>ALLOW_UNAUTH=true</code>) for dev simplicity. Before production, lock the Cloud Run service down (IAM / signed requests) since it processes personal ID data.</li>
+</ol>
+<hr />
+<h2 id="8-glossary">8. Glossary</h2>
+<ul>
+<li><strong>OCR</strong> — Optical Character Recognition: turning text in an image into machine text.</li>
+<li><strong>NID</strong> — National ID card.</li>
+<li><strong>MRZ</strong> — Machine-Readable Zone: the <code>&lt;&lt;&lt;</code>-padded lines at the bottom of the card, designed to be read by machines and follow a fixed, verifiable format.</li>
+<li><strong>Stateless</strong> — the service keeps no memory or database; each request is independent.</li>
+<li><strong>Latency</strong> — how long the service takes to respond.</li>
+<li><strong>Cloud Run</strong> — Google's service for running containers that scale automatically (including down to zero when idle, so you only pay per request).</li>
+</ul>
+
+</body>
+</html>

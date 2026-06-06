@@ -22,150 +22,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import statistics
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SAMPLE_DIR = REPO_ROOT / "sample_imgs"
-
-# The fields the production prompt is expected to return (used for fill-rate).
-EXPECTED_FIELDS = [
-    "idNumber", "lastNameKh", "firstNameKh", "dob", "gender",
-    "lastNameEn", "firstNameEn", "expiredDate", "issuedDate",
-    "address", "pob", "MRZ1", "MRZ2", "MRZ3",
-]
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
-
-
-# ---------------------------------------------------------------------------
-# Benchmark
-# ---------------------------------------------------------------------------
-
-def _list_sample_images(limit: int | None) -> list[Path]:
-    imgs = sorted(
-        p for p in SAMPLE_DIR.glob("*")
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTS
-    )
-    return imgs[:limit] if limit else imgs
-
-
-def benchmark_model(model: str, images: list[Path]) -> dict:
-    """
-    Run the production extractor over every image with one model.
-
-    Returns measured aggregates: avg/median latency (ms), JSON-valid count,
-    and average field-fill rate. Accuracy is NOT measured here — it needs a
-    human-verified ground truth, so those rows stay as fill-in placeholders.
-    """
-    from gemini.extractor import extract_from_bytes
-
-    latencies: list[float] = []
-    json_ok = 0
-    fill_rates: list[float] = []
-    errors = 0
-
-    for img in images:
-        data = img.read_bytes()
-        t0 = time.perf_counter()
-        try:
-            result = extract_from_bytes(data, model=model)
-        except Exception as e:  # noqa: BLE001 — report, don't crash the whole run
-            errors += 1
-            print(f"  ! {model} {img.name}: {e}", file=sys.stderr)
-            continue
-        latencies.append((time.perf_counter() - t0) * 1000)
-
-        fields = result.get("fields") or {}
-        if fields:  # extract_from_bytes returns {} only on a JSON parse fallback
-            json_ok += 1
-            filled = sum(1 for k in EXPECTED_FIELDS if fields.get(k))
-            fill_rates.append(filled / len(EXPECTED_FIELDS))
-
-        print(f"  · {model} {img.name}: {latencies[-1]:.0f} ms" if latencies else "")
-
-    n = len(images)
-    return {
-        "model": model,
-        "n": n,
-        "errors": errors,
-        "avg_ms": round(statistics.mean(latencies)) if latencies else None,
-        "median_ms": round(statistics.median(latencies)) if latencies else None,
-        "json_ok": json_ok,
-        "fill_rate": round(statistics.mean(fill_rates) * 100, 1) if fill_rates else None,
-    }
-
-
-def _fmt_ms(v) -> str:
-    return f"{v} ms" if v is not None else "_____ ms"
-
-
-def _fmt_pct(v) -> str:
-    return f"{v} %" if v is not None else "_____ %"
-
-
-def comparison_table(results: dict | None) -> str:
-    """Render the §6.3 measured-results table — live numbers or placeholders."""
-    flash = (results or {}).get("gemini-2.5-flash", {})
-    pro = (results or {}).get("gemini-2.5-pro", {})
-
-    n = flash.get("n") or pro.get("n") or "N"
-
-    def cell(d: dict, key: str, fmt) -> str:
-        return fmt(d.get(key)) if d else fmt(None)
-
-    if results:
-        note = (
-            f"> Measured on {n} sample card(s) from `sample_imgs/` on "
-            f"{datetime.now():%Y-%m-%d %H:%M}. Latency is wall-clock around the "
-            f"`extract_from_bytes` call. Accuracy rows require a human-verified "
-            f"ground truth and are left blank for manual scoring."
-        )
-        avg = f"| Avg. latency per card | {cell(flash,'avg_ms',_fmt_ms)} | {cell(pro,'avg_ms',_fmt_ms)} |"
-        med = f"| Median latency per card | {cell(flash,'median_ms',_fmt_ms)} | {cell(pro,'median_ms',_fmt_ms)} |"
-        jok = (
-            f"| JSON well-formed (no parse fallback) "
-            f"| {flash.get('json_ok','_')} / {n} | {pro.get('json_ok','_')} / {n} |"
-        )
-        fill = f"| Avg. field-fill rate | {cell(flash,'fill_rate',_fmt_pct)} | {cell(pro,'fill_rate',_fmt_pct)} |"
-    else:
-        note = (
-            "> Fill these in with the numbers you recorded. Use the same set of "
-            "sample cards for both models (`sample_imgs/`) so the comparison is fair. "
-            "Run this script with `--benchmark` to auto-populate the measurable rows."
-        )
-        avg = "| Avg. latency per card (`gemini_api_ms`) | _____ ms | _____ ms |"
-        med = "| Median latency per card | _____ ms | _____ ms |"
-        jok = "| JSON well-formed (no parse fallback) | _____ / N | _____ / N |"
-        fill = "| Avg. field-fill rate | _____ % | _____ % |"
-
-    return f"""{note}
-
-| Metric | Gemini 2.5 Flash | Gemini 2.5 Pro |
-|---|---|---|
-{avg}
-{med}
-| Field accuracy — clear cards | _____ % | _____ % |
-| Field accuracy — difficult cards (glare/skew/low-res) | _____ % | _____ % |
-| Khmer name/address correctness | _____ | _____ |
-| ID number / dates / gender correctness¹ | _____ | _____ |
-{jok}
-{fill}
-| Relative cost per call | 1× (baseline) | ~ ___× |
-
-¹ Note: `dob`, `gender`, `expiredDate`, and English names are **MRZ-verified**, so
-both models should score near-identically on these whenever the MRZ is readable — the
-real differentiator is the Khmer fields and overall reading on hard images."""
 
 
 # ---------------------------------------------------------------------------
 # Report body
 # ---------------------------------------------------------------------------
 
-def build_report(results: dict | None) -> str:
+def build_report() -> str:
     generated = datetime.now().strftime("%Y-%m-%d")
     return f"""# Gemini OCR Service — Khmer NID Card Text Detection & Recognition
 
@@ -621,18 +489,6 @@ def render_pdf(md_path: Path, pdf_path: Path) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the Gemini OCR service report")
-    parser.add_argument(
-        "--benchmark", action="store_true",
-        help="Run Flash + Pro over sample_imgs/ and inject live numbers (needs API key)",
-    )
-    parser.add_argument(
-        "--models", nargs="+", default=["gemini-2.5-flash", "gemini-2.5-pro"],
-        help="Models to benchmark (default: flash + pro)",
-    )
-    parser.add_argument(
-        "--limit", type=int, default=None,
-        help="Limit number of sample images used in the benchmark",
-    )
     parser.add_argument("--html", action="store_true", help="Also emit a styled HTML file")
     parser.add_argument(
         "--pdf", action="store_true",
@@ -648,21 +504,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    results = None
-    if args.benchmark:
-        sys.path.insert(0, str(REPO_ROOT))  # so `gemini` package imports work
-        images = _list_sample_images(args.limit)
-        if not images:
-            print(f"No images found in {SAMPLE_DIR}", file=sys.stderr)
-            return 1
-        print(f"Benchmarking {len(images)} image(s) across: {', '.join(args.models)}")
-        results = {}
-        for model in args.models:
-            print(f"\n== {model} ==")
-            results[model] = benchmark_model(model, images)
-        print()
-
-    report_md = build_report(results)
+    report_md = build_report()
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -39,7 +39,6 @@ async def gemini_ocr_upload(
         return round((b - a) * 1000, 2)
 
     return GeminiOCRResponse(
-        text=result["text"],
         fields=result["fields"],
         model=result["model"],
         timing=TimingInfo(

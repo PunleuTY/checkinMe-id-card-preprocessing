@@ -10,7 +10,6 @@ class TimingInfo(BaseModel):
 
 
 class GeminiOCRResponse(BaseModel):
-    text: str
     fields: dict[str, Any]
     model: str
     timing: TimingInfo | None = None

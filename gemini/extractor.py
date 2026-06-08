@@ -24,41 +24,33 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
   The image may be a phone photo or scan that is rotated, skewed, low-resolution,
   or affected by glare, shadows, or background clutter. Read the card regardless.
 
-  Cambodian NID cards contain:
-  - A 9-digit ID number (top area of the card)
-  - Last name and first name in Khmer script (ឈ្មោះជាអក្សរខ្មែរ)
-  - Last name and first name in English/Latin (UPPERCASE)
-  - Date of birth in DD/MM/YYYY format (កន្លែងកំណើត)
-  - Gender: M for male, F for female
-  - Place of birth in Khmer (ទីកន្លែងកំណើត / POB)
-  - Address in Khmer (អាស័យដ្ឋានបច្ចុប្បន្ន )
-  - Issue date in DD/MM/YYYY (កាលបរិច្ឆេទចេញ)
-  - Expiry date in DD/MM/YYYY (កាលបរិច្ឆេទផុតកំណត់)
-  - Distinguishing physical features (ភិនភាគចំណាំពិសេស): a list of short Khmer phrases
-    describing unique physical marks on the owner's face or body that appear in
-    the section just above the MRZ, e.g. "ប្រជ្រុយនៅក្រោមច្រមុះ ០,៦ ស.ម" (mole under the nose).
-    Preserve the exact Khmer text; return as an array of strings.
+  Extract only the following fields:
+  - idNumber: 9-digit ID number (top area of the card), digits only
+  - lastNameKh / firstNameKh: last and first name in Khmer script
+  - lastNameEn / firstNameEn: last and first name in English/Latin (UPPERCASE)
+  - dob: date of birth in DD/MM/YYYY
+  - gender: "M" for male, "F" for female
+  - expiredDate: expiry date in DD/MM/YYYY (កាលបរិច្ឆេទផុតកំណត់)
+  - address: current address in Khmer (អាស័យដ្ឋានបច្ចុប្បន្ន)
   - Three MRZ lines at the bottom (machine-readable zone):
       MRZ1: starts with IDKHM followed by the 9-digit ID number and < padding
       MRZ2: 6-digit DOB + check digit + sex (M/F) + 6-digit expiry + check + KHM + padding + composite check
       MRZ3: SURNAME<<GIVENNAME<<< padding (all uppercase, spaces replaced by <)
 
-  Return ONLY valid JSON with exactly this shape (no markdown fences, no extra keys):
+  Return ONLY valid JSON with exactly this shape (no markdown fences, no extra keys,
+  and do NOT include a full text transcription):
 
   {
-    "text": "<full raw transcription of every visible character on the card>",
     "fields": {
       "idNumber": null,
       "lastNameKh": null,
       "firstNameKh": null,
-      "dob": null,
-      "gender": null,
       "lastNameEn": null,
       "firstNameEn": null,
+      "dob": null,
+      "gender": null,
       "expiredDate": null,
-      "issuedDate": null,
       "address": null,
-      "pob": null,
       "MRZ1": null,
       "MRZ2": null,
       "MRZ3": null
@@ -71,8 +63,6 @@ PROMPT = """You are an OCR system specialized in Cambodian National ID cards (NI
   - gender must be exactly "M" or "F", nothing else.
   - English name fields (lastNameEn, firstNameEn) must be UPPERCASE.
   - Preserve all Khmer Unicode characters verbatim — do not transliterate.
-  - distinguishingFeatures must be an array of strings (empty array [] if none found).
-    Each element is one physical mark phrase exactly as printed in Khmer.
   - For MRZ lines: copy every character exactly including all < characters, digits, and letters.
     Valid MRZ characters are only: A-Z, 0-9, and <
 """
@@ -662,16 +652,19 @@ def extract_from_bytes(
         len(image_bytes),
     )
 
+    # Disable "thinking" for flash models (deterministic OCR doesn't need it and it
+    # dominates latency/token cost). Pro models reject thinking_budget=0, so guard it.
+    config_kwargs = dict(response_mime_type="application/json", temperature=0)
+    if "flash" in model_name:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+
     resp = client.models.generate_content(
         model=model_name,
         contents=[
             types.Part.from_bytes(data=image_bytes, mime_type=mime),
             PROMPT,
         ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0,
-        ),
+        config=types.GenerateContentConfig(**config_kwargs),
     )
 
     raw = resp.text or ""

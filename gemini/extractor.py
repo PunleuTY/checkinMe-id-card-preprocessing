@@ -166,7 +166,7 @@ def extract_from_bytes(
     """
     Run Gemini extraction on raw image bytes.
 
-    Returns {"text": str, "fields": dict, "model": str, "raw": str}.
+    Returns {"fields": dict, "model": str, "raw": str}.
     MRZ lines are parsed programmatically to backfill/correct vision results.
     """
     from google.genai import types
@@ -204,11 +204,10 @@ def extract_from_bytes(
     raw = resp.text or ""
     try:
         data = _parse_json(raw)
-        text = data.get("text", "")
         fields = data.get("fields", {})
     except (json.JSONDecodeError, AttributeError):
-        logger.warning("gemini: response was not valid JSON, returning raw text")
-        text, fields = raw, {}
+        logger.warning("gemini: response was not valid JSON, returning empty fields")
+        fields = {}
 
     # MRZ-derived values are deterministic — use them to backfill/correct vision fields
     mrz_corrections = _parse_mrz(fields)
@@ -221,8 +220,8 @@ def extract_from_bytes(
             logger.info("mrz correction: %s %r → %r", key, existing, val)
             fields[key] = val
 
-    logger.info("gemini: extracted %d chars, %d fields", len(text), len(fields))
-    return {"text": text, "fields": fields, "model": model_name, "raw": raw}
+    logger.info("gemini: extracted %d fields", len(fields))
+    return {"fields": fields, "model": model_name, "raw": raw}
 
 
 def extract_from_file(
